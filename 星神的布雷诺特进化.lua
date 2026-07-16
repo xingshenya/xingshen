@@ -1,7 +1,6 @@
 --[[
-    怪物自动攻击脚本 - 最终修复版
-    修复：实时扫描 + 死亡自动跳过 + 复活自动切换 + 多文件夹优先扫描
-    注意：RequestAttack 只有 CFrame 参数，无法修改伤害数值
+    自动攻击 - 锁定目标 + 强制无敌版
+    作者：星神
 --]]
 
 local function safeLoad(url)
@@ -32,7 +31,6 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
 
 local RequestAttack = ReplicatedStorage
     :WaitForChild("Packages")
@@ -44,14 +42,14 @@ local RequestAttack = ReplicatedStorage
 
 --// ==================== UI ====================
 local Window = Library:CreateWindow({
-    Title = "自动攻击 - 修复版",
-    Footer = "星神",
+    Title = "自动攻击",
+    Footer = "星神 制作",
     Icon = 131153193945220,
     NotifySide = "Right",
     ShowCustomCursor = true,
 })
 
-Library:Notify({ Title = "自动攻击", Description = "修复版已加载\n解决目标锁定问题", Time = 5 })
+Library:Notify({ Title = "自动攻击", Description = "锁定目标版已加载", Time = 5 })
 
 local Tabs = {
     Main = Window:AddTab("主要", "sword"),
@@ -75,183 +73,144 @@ end
 local Settings = {
     Enabled = false,
     MaxDistance = 5000,
-    AttackInterval = 0.01,
-    MonsterFilter = "",
+    Interval = 0.01,
     GodMode = false,
-    ShowDebug = true,
+    ShowDebug = false,
 }
 
 local State = {
-    TotalAttacks = 0,
-    CurrentTargetName = "无",
-    Connection = nil,
+    Total = 0,
+    Target = "无",
+    Conn = nil,
+    GodConn = nil,
 }
 
---// ==================== 核心：实时怪物检测（不缓存任何属性） ====================
+--// ==================== 实时获取（不缓存） ====================
+local function GetCharacter()
+    return player.Character
+end
 
 local function GetRootPart()
-    if not character then return nil end
-    return character:FindFirstChild("HumanoidRootPart")
+    local char = GetCharacter()
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart")
 end
 
-local function GetLiveMonsters()
-    local rootPart = GetRootPart()
-    if not rootPart then return {} end
-    local playerPos = rootPart.Position
+local function GetHumanoid()
+    local char = GetCharacter()
+    if not char then return nil end
+    return char:FindFirstChildOfClass("Humanoid")
+end
 
-    -- 优先扫描常见怪物文件夹（比全 Workspace 快且准）
-    local allModels = {}
-    local folderNames = { "Mobs", "Enemies", "Monsters", "NPCs", "Creatures", "Entities", "Hostiles", "SpawnedMobs", "MonsterSpawns", "MobFolder" }
-    
-    for _, name in ipairs(folderNames) do
-        local f = Workspace:FindFirstChild(name)
-        if f then
-            for _, child in pairs(f:GetChildren()) do
-                if child:IsA("Model") and child ~= character and not Players:GetPlayerFromCharacter(child) then
-                    table.insert(allModels, child)
+--// ==================== 扫描怪物 ====================
+local function GetMonsters()
+    local root = GetRootPart()
+    if not root then return {} end
+    local pos = root.Position
+
+    local list = {}
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj ~= GetCharacter() and not Players:GetPlayerFromCharacter(obj) then
+            local hum = obj:FindFirstChildOfClass("Humanoid")
+            local part = obj:FindFirstChild("HumanoidRootPart")
+            if hum and part and hum.Health > 0 then
+                local d = (part.Position - pos).Magnitude
+                if d <= Settings.MaxDistance then
+                    table.insert(list, { Model = obj, Part = part, Name = obj.Name, Dist = d })
                 end
             end
         end
     end
-
-    -- 如果没找到专用文件夹， fallback 扫描 Workspace
-    if #allModels == 0 then
-        for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= character and not Players:GetPlayerFromCharacter(obj) then
-                table.insert(allModels, obj)
-            end
-        end
-    end
-
-    local valid = {}
-    for _, model in ipairs(allModels) do
-        -- 关键：每次都要重新查找 Humanoid 和 RootPart，绝不缓存
-        if not model.Parent then continue end
-
-        local hum = model:FindFirstChildOfClass("Humanoid")
-        local mobRoot = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso")
-
-        -- 必须活着（Health > 0），且根部件存在
-        if hum and hum.Health > 0 and mobRoot and mobRoot.Parent then
-            if Settings.MonsterFilter == "" or model.Name:lower():find(Settings.MonsterFilter:lower()) then
-                local dist = (mobRoot.Position - playerPos).Magnitude
-                if dist <= Settings.MaxDistance then
-                    table.insert(valid, {
-                        Model = model,      -- 只存模型引用，不存任何属性
-                        Name = model.Name,
-                        Distance = dist,
-                    })
-                end
-            end
-        end
-    end
-
-    table.sort(valid, function(a, b) return a.Distance < b.Distance end)
-    return valid
+    table.sort(list, function(a, b) return a.Dist < b.Dist end)
+    return list
 end
 
---// ==================== 攻击逻辑（实时读坐标，绝不缓存） ====================
+--// ==================== 攻击逻辑（锁定最近目标） ====================
+local CurrentTarget = nil
 
-local function AttackMonster(model)
-    -- 再次检查模型是否还存在
-    if not model or not model.Parent then return false, "模型已销毁" end
-
-    -- 实时重新查找部件（防止怪物复活后部件换新）
-    local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso")
-    local hum = model:FindFirstChildOfClass("Humanoid")
-
-    if not root then return false, "找不到根部件" end
-    if not hum then return false, "找不到 Humanoid" end
-    if hum.Health <= 0 then return false, "目标已死亡" end
-
-    -- 实时坐标！不是缓存的
-    local cf = root.CFrame
-
-    local success, result = pcall(function()
-        return RequestAttack:InvokeServer(cf)
-    end)
-
-    if success then
-        State.TotalAttacks = State.TotalAttacks + 1
-        State.CurrentTargetName = model.Name
-        return true, result
-    else
-        return false, tostring(result)
-    end
-end
-
--- 主循环：每次重新扫描全部怪物，实时攻击
-local function AttackLoop()
+local function AttackOnce()
     if not Settings.Enabled then return end
-
-    local monsters = GetLiveMonsters()
-    if #monsters == 0 then
-        State.CurrentTargetName = "无"
-        return
-    end
-
-    -- 遍历所有活着的怪，每个都实时读取坐标
-    for _, entry in ipairs(monsters) do
-        if not Settings.Enabled then break end
-
-        -- 攻击前再查一次血量（防止循环过程中怪死了）
-        local hum = entry.Model:FindFirstChildOfClass("Humanoid")
-        if hum and hum.Health > 0 then
-            local ok, err = AttackMonster(entry.Model)
-            if not ok and Settings.ShowDebug then
-                -- Library:Notify("跳过: " .. err, 1)
+    
+    local root = GetRootPart()
+    if not root then return end
+    
+    -- 检查当前锁定目标是否仍然有效
+    if CurrentTarget then
+        local model = CurrentTarget.Model
+        if model and model.Parent then
+            local hum = model:FindFirstChildOfClass("Humanoid")
+            local part = model:FindFirstChild("HumanoidRootPart")
+            if hum and hum.Health > 0 and part then
+                local dist = (part.Position - root.Position).Magnitude
+                if dist <= Settings.MaxDistance then
+                    -- 仍然有效，继续攻击这个目标
+                    pcall(function()
+                        RequestAttack:InvokeServer(part.CFrame)
+                    end)
+                    State.Total = State.Total + 1
+                    State.Target = CurrentTarget.Name .. " (" .. string.format("%.1f", dist) .. ")"
+                    return
+                end
             end
         end
-
-        if Settings.AttackInterval > 0 then
-            task.wait(Settings.AttackInterval)
-        end
+        -- 无效了，清空
+        CurrentTarget = nil
+    end
+    
+    -- 找新的最近目标
+    local mobs = GetMonsters()
+    if #mobs > 0 then
+        CurrentTarget = mobs[1]
+        pcall(function()
+            RequestAttack:InvokeServer(CurrentTarget.Part.CFrame)
+        end)
+        State.Total = State.Total + 1
+        State.Target = CurrentTarget.Name .. " (" .. string.format("%.1f", CurrentTarget.Dist) .. ")"
+    else
+        State.Target = "无"
     end
 end
 
---// ==================== 无敌模式 ====================
-
+--// ==================== 无敌模式（强制满血） ====================
 local function SetupGodMode()
-    local function HookHumanoid(hum)
-        if not hum or hum:GetAttribute("PenetrateHooked") then return end
-        hum:SetAttribute("PenetrateHooked", true)
-
-        local oldTakeDamage = hum.TakeDamage
-        hum.TakeDamage = function(self, amount, ...)
-            if Settings.GodMode then
-                if Settings.ShowDebug then
-                    Library:Notify("拦截伤害: " .. tostring(amount), 1)
-                end
-                return 0
-            end
-            return oldTakeDamage(self, amount, ...)
-        end
-
-        local mt = getrawmetatable(hum)
-        if mt and mt.__newindex then
-            local oldNewIndex = mt.__newindex
-            make_writeable(mt)
-            mt.__newindex = function(t, k, v)
-                if k == "Health" and typeof(v) == "number" and Settings.GodMode then
-                    local current = hum.Health
-                    if v < current then
-                        return oldNewIndex(t, k, current)
+    -- 1. Hook TakeDamage（如果支持）
+    local function HookTD(hum)
+        if not hum then return end
+        local old = hum.TakeDamage
+        if old and typeof(old) == "function" then
+            hum.TakeDamage = function(self, amt, ...)
+                if Settings.GodMode then
+                    if Settings.ShowDebug then
+                        Library:Notify("拦截伤害: " .. tostring(amt), 1)
                     end
+                    return 0
                 end
-                return oldNewIndex(t, k, v)
+                return old(self, amt, ...)
             end
-            make_readonly(mt)
         end
     end
-
-    local hum = character:FindFirstChildOfClass("Humanoid")
-    if hum then HookHumanoid(hum) end
-
-    player.CharacterAdded:Connect(function(newChar)
-        character = newChar
+    
+    -- 2. 心跳强制满血（最可靠，不依赖 Hook）
+    if State.GodConn then State.GodConn:Disconnect() end
+    State.GodConn = RunService.Heartbeat:Connect(function()
+        if not Settings.GodMode then return end
+        local hum = GetHumanoid()
+        if hum and hum.MaxHealth and hum.MaxHealth > 0 then
+            if hum.Health < hum.MaxHealth then
+                hum.Health = hum.MaxHealth
+            end
+        end
+    end)
+    
+    -- 初始 Hook
+    local hum = GetHumanoid()
+    if hum then HookTD(hum) end
+    
+    -- 重生 Hook
+    player.CharacterAdded:Connect(function(c)
         task.wait(0.5)
-        local newHum = newChar:FindFirstChildOfClass("Humanoid")
-        if newHum then HookHumanoid(newHum) end
+        local nh = c:FindFirstChildOfClass("Humanoid")
+        if nh then HookTD(nh) end
     end)
 end
 
@@ -262,19 +221,17 @@ local AttackGroup = Tabs.Main:AddLeftGroupbox("攻击控制")
 AttackGroup:AddToggle("AutoAttack", {
     Text = "自动攻击",
     Default = false,
-    Tooltip = "开启后实时扫描并攻击所有活着的怪物",
-}):OnChanged(function(Value)
-    Settings.Enabled = Value
-    if Value then
-        Library:Notify("自动攻击已开启 | 实时扫描模式", 3)
-        State.Connection = RunService.Heartbeat:Connect(AttackLoop)
+    Tooltip = "锁定最近目标持续攻击，死了自动切下一个",
+}):OnChanged(function(v)
+    Settings.Enabled = v
+    if v then
+        State.Conn = RunService.Heartbeat:Connect(AttackOnce)
+        Library:Notify("自动攻击已开启 | 锁定最近目标", 3)
     else
+        if State.Conn then State.Conn:Disconnect() State.Conn = nil end
+        CurrentTarget = nil
+        State.Target = "无"
         Library:Notify("自动攻击已关闭", 3)
-        if State.Connection then
-            State.Connection:Disconnect()
-            State.Connection = nil
-        end
-        State.CurrentTargetName = "无"
     end
 end)
 
@@ -285,8 +242,8 @@ AttackGroup:AddSlider("RangeSlider", {
     Max = 10000,
     Rounding = 0,
     Suffix = " studs",
-}):OnChanged(function(Value)
-    Settings.MaxDistance = Value
+}):OnChanged(function(v)
+    Settings.MaxDistance = v
 end)
 
 AttackGroup:AddSlider("IntervalSlider", {
@@ -296,25 +253,20 @@ AttackGroup:AddSlider("IntervalSlider", {
     Max = 1,
     Rounding = 2,
     Suffix = "s",
-}):OnChanged(function(Value)
-    Settings.AttackInterval = Value
+}):OnChanged(function(v)
+    Settings.Interval = v
 end)
 
-AttackGroup:AddInput("FilterInput", {
-    Text = "怪物名称过滤",
-    Default = "",
-    Numeric = false,
-    Finished = true,
-}):OnChanged(function(Value)
-    Settings.MonsterFilter = Value
+AttackGroup:AddButton("手动攻击最近", function()
+    CurrentTarget = nil
+    AttackOnce()
+    Library:Notify("已攻击: " .. State.Target, 2)
 end)
 
-AttackGroup:AddButton("手动攻击全部（测试）", function()
-    local monsters = GetLiveMonsters()
-    Library:Notify("发现 " .. #monsters .. " 个活着的怪物", 3)
-    for _, entry in ipairs(monsters) do
-        AttackMonster(entry.Model)
-    end
+AttackGroup:AddButton("切换目标", function()
+    CurrentTarget = nil
+    AttackOnce()
+    Library:Notify("已切换至: " .. State.Target, 2)
 end)
 
 -- 状态
@@ -327,15 +279,84 @@ local MonsterCountLabel = StatusGroup:AddLabel("周围怪物: 0")
 task.spawn(function()
     while true do
         task.wait(0.3)
-        local monsters = GetLiveMonsters()
-        MonsterCountLabel:SetText("周围怪物: " .. #monsters)
-        TargetLabel:SetText("当前目标: " .. State.CurrentTargetName)
-        CountLabel:SetText("攻击次数: " .. State.TotalAttacks)
+        local mobs = GetMonsters()
+        MonsterCountLabel:SetText("周围怪物: " .. #mobs)
+        TargetLabel:SetText("当前目标: " .. State.Target)
+        CountLabel:SetText("攻击次数: " .. State.Total)
     end
 end)
 
--- 无敌
+-- 无敌标签
 local GodGroup = Tabs.GodMode:AddLeftGroupbox("怪物无敌")
+
+GodGroup:AddToggle("GodModeToggle", {
+    Text = "怪物攻击无伤害",
+    Default = false,
+    Tooltip = "每帧强制满血，不依赖 Hook",
+}):OnChanged(function(v)
+    Settings.GodMode = v
+    Library:Notify(v and "无敌已开启（强制满血）" or "无敌已关闭", 3)
+end)
+
+GodGroup:AddLabel("原理：Heartbeat 每帧强制 Health = MaxHealth")
+GodGroup:AddLabel("不依赖 metatable Hook，最稳定")
+
+GodGroup:AddButton("测试无敌(暂时无效)", function()
+    local hum = GetHumanoid()
+    if hum then
+        local before = hum.Health
+        hum:TakeDamage(999)
+        task.wait(0.2)
+        local after = hum.Health
+        Library:Notify(string.format("血量: %.1f -> %.1f %s", before, after, after >= before and "✓有效" or "✗失效"), 3)
+    else
+        Library:Notify("未找到 Humanoid", 3)
+    end
+end)
+
+-- 设置标签
+local MiscGroup = Tabs.Settings:AddLeftGroupbox("其他设置")
+
+MiscGroup:AddToggle("ShowDebug", {
+    Text = "显示调试信息",
+    Default = false,
+}):OnChanged(function(v)
+    Settings.ShowDebug = v
+end)
+
+MiscGroup:AddButton("重置攻击计数", function()
+    State.Total = 0
+    Library:Notify("已重置", 2)
+end)
+
+--// ==================== 重生处理 ====================
+player.CharacterAdded:Connect(function(c)
+    task.wait(1)
+    if Settings.Enabled then
+        if State.Conn then State.Conn:Disconnect() end
+        CurrentTarget = nil
+        State.Conn = RunService.Heartbeat:Connect(function()
+            task.wait(Settings.Interval)
+            AttackOnce()
+        end)
+    end
+end)
+
+player.CharacterRemoving:Connect(function()
+    if State.Conn then
+        State.Conn:Disconnect()
+        State.Conn = nil
+    end
+    CurrentTarget = nil
+end)
+
+--// ==================== 初始化 ====================
+SetupGodMode()
+
+Library:Notify("脚本已就绪", 5)
+Library:Notify("锁定最近目标，死亡自动切换", 5)
+Library:Notify("无敌采用强制满血，稳定可靠", 5)
+("怪物无敌(暂时别用，没效果)")
 
 GodGroup:AddToggle("GodModeToggle", {
     Text = "怪物攻击无伤害",
@@ -346,7 +367,7 @@ GodGroup:AddToggle("GodModeToggle", {
     Library:Notify(Value and "无敌已开启" or "无敌已关闭", 3)
 end)
 
-GodGroup:AddButton("测试无敌", function()
+GodGroup:AddButton("自杀", function()
     local hum = character:FindFirstChildOfClass("Humanoid")
     if hum then
         local before = hum.Health
