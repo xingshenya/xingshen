@@ -301,7 +301,7 @@ end)
 GodGroup:AddLabel("原理：Heartbeat 每帧强制 Health = MaxHealth")
 GodGroup:AddLabel("不依赖 metatable Hook，最稳定")
 
-GodGroup:AddButton("测试无敌(暂时无效)", function()
+GodGroup:AddButton("测试无敌", function()
     local hum = GetHumanoid()
     if hum then
         local before = hum.Health
@@ -356,60 +356,3 @@ SetupGodMode()
 Library:Notify("脚本已就绪", 5)
 Library:Notify("锁定最近目标，死亡自动切换", 5)
 Library:Notify("无敌采用强制满血，稳定可靠", 5)
-("怪物无敌(暂时别用，没效果)")
-
-GodGroup:AddToggle("GodModeToggle", {
-    Text = "怪物攻击无伤害",
-    Default = false,
-    Tooltip = "开启后怪物打你零伤害",
-}):OnChanged(function(Value)
-    Settings.GodMode = Value
-    Library:Notify(Value and "无敌已开启" or "无敌已关闭", 3)
-end)
-
-GodGroup:AddButton("自杀", function()
-    local hum = character:FindFirstChildOfClass("Humanoid")
-    if hum then
-        local before = hum.Health
-        hum:TakeDamage(999)
-        task.wait(0.1)
-        Library:Notify("血量: " .. before .. " -> " .. hum.Health, 3)
-    end
-end)
-
--- 设置
-local MiscGroup = Tabs.Settings:AddLeftGroupbox("其他")
-
-MiscGroup:AddToggle("ShowDebug", {
-    Text = "显示调试信息",
-    Default = true,
-}):OnChanged(function(Value)
-    Settings.ShowDebug = Value
-end)
-
-MiscGroup:AddButton("重置计数", function()
-    State.TotalAttacks = 0
-    Library:Notify("已重置", 2)
-end)
-
---// ==================== 初始化 ====================
-SetupGodMode()
-
-player.CharacterAdded:Connect(function(newChar)
-    character = newChar
-    if Settings.Enabled then
-        if State.Connection then State.Connection:Disconnect() end
-        task.wait(1)
-        State.Connection = RunService.Heartbeat:Connect(AttackLoop)
-    end
-end)
-
-player.CharacterRemoving:Connect(function()
-    if State.Connection then
-        State.Connection:Disconnect()
-        State.Connection = nil
-    end
-end)
-
-Library:Notify("修复版已就绪", 5)
-Library:Notify("每次循环重新扫描，死亡自动跳过", 5)
