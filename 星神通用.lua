@@ -135,6 +135,7 @@ local originalOutdoorAmbient = Lighting.OutdoorAmbient
 local originalFogEnd = Lighting.FogEnd
 local originalBrightness = Lighting.Brightness
 
+-- 透视
 local espEnabled = false
 local espConnections = {}
 local espObjects = {}
@@ -213,6 +214,7 @@ end
 
 toggleRefs.esp = Tabs.GeneralTab:Toggle({ Title = "透视", Value = false, Callback = function(state) toggleESP(state) end })
 
+-- 加速
 local speedEnabled = false
 local originalWalkSpeed = 16
 local speedValue = 50
@@ -255,6 +257,7 @@ Tabs.GeneralTab:Button({
     end
 })
 
+-- 高跳
 local jumpEnabled = false
 local originalJumpPower = 50
 local jumpValue = 100
@@ -297,6 +300,7 @@ Tabs.GeneralTab:Button({
     end
 })
 
+-- 马可波罗
 local spinEnabled = false; local spinConnection = nil; local spinSpeed = 100
 
 toggleRefs.spin = Tabs.GeneralTab:Toggle({
@@ -332,6 +336,7 @@ Tabs.GeneralTab:Slider({
     Callback = function(value) spinSpeed = value end
 })
 
+-- 夜视
 local nightVisionEnabled = false; local nightVisionThread = nil
 
 toggleRefs.nightVision = Tabs.GeneralTab:Toggle({
@@ -355,6 +360,7 @@ toggleRefs.nightVision = Tabs.GeneralTab:Toggle({
     end
 })
 
+-- 吸人
 local attractEnabled = false; local attractThread = nil
 
 toggleRefs.attract = Tabs.GeneralTab:Toggle({
@@ -391,6 +397,7 @@ toggleRefs.attract = Tabs.GeneralTab:Toggle({
     end
 })
 
+-- 视角相机区域（默认折叠）
 local CameraSection = Tabs.GeneralTab:Section({ Title = "视角相机", Opened = false })
 
 local freeCamEnabled = false
@@ -514,6 +521,7 @@ toggleRefs.fixedCam = CameraSection:Toggle({
     end
 })
 
+-- 重生处理
 LocalPlayer.CharacterAdded:Connect(function(char)
     local function applyStats()
         local hum = char:FindFirstChildOfClass("Humanoid")
@@ -533,6 +541,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
+-- 标记点与循环传送
 local MarkSection = Tabs.GeneralTab:Section({ Title = "标记点与循环传送", Opened = false })
 local markObjects = {}
 local markPositions = { [1] = Vector3.zero, [2] = Vector3.zero, [3] = Vector3.zero }
@@ -597,6 +606,7 @@ toggleRefs.loopTeleport = MarkSection:Toggle({
     end
 })
 
+-- 坐标传送
 local TeleSection = Tabs.GeneralTab:Section({ Title = "坐标传送", Opened = false })
 TeleSection:Button({
     Title = "复制当前坐标", Callback = function()
@@ -624,6 +634,7 @@ TeleSection:Button({
     end
 })
 
+-- 一键关闭所有功能
 Tabs.GeneralTab:Button({
     Title = "一键关闭所有功能",
     Callback = function()
@@ -643,6 +654,7 @@ Tabs.GeneralTab:Button({
     end
 })
 
+-- 古怪的球棒
 local chainKillEnabled = false; local chainKillThread = nil
 toggleRefs.chainKill = Tabs.WeirdBatTab:Toggle({
     Title = "秒杀", Value = false,
@@ -867,6 +879,7 @@ Tabs.WeirdBatTab:Button({
     end
 })
 
+-- 合成核弹（支持大数字单位）
 local function safeServerTime()
     local ok, t = pcall(function() return workspace:GetServerTimeNow() end)
     return (ok and type(t) == "number") and t or tick()
@@ -1068,6 +1081,7 @@ toggleRefs.autoUpgradeAll = Tabs.NukeTab:Toggle({
     end
 })
 
+-- 沉默的刺客
 local assassinEnabled = false; local assassinThread = nil
 toggleRefs.assassin = Tabs.AssassinTab:Toggle({
     Title = "强制显示模型", Value = false,
@@ -1174,56 +1188,10 @@ toggleRefs.gacha = Tabs.AssassinTab:Toggle({
     end
 })
 
-local MUSIC_URL = "https://xingshenya.github.io/xingshen/罗曼蒂克的爱情_DJ版_板载小曲.mp3"
-local MUSIC_ID = "rbxassetid://1234567890"
-
-local function playMusicExternal()
-    if rconsoleplay then
-        local success, err = pcall(function()
-            rconsoleplay(MUSIC_URL)
-        end)
-        if success then return true end
-    end
-    if syn and syn.playSound then
-        local success, err = pcall(function()
-            syn.playSound(MUSIC_URL, 0.5, false)
-        end)
-        if success then return true end
-    end
-    return false
-end
-
-local function playMusicInGame()
-    local sound = Instance.new("Sound")
-    sound.SoundId = MUSIC_ID
-    sound.Looped = false
-    sound.Volume = 0.5
-    sound.Parent = game:GetService("CoreGui")
-    sound.Ended:Connect(function()
-        sound:Destroy()
-    end)
-    sound:Play()
-    return sound
-end
-
-local musicSound
-if not playMusicExternal() then
-    musicSound = playMusicInGame()
-end
-
-local function stopMusic()
-    if musicSound then
-        musicSound:Stop()
-        musicSound:Destroy()
-        musicSound = nil
-    end
-end
-
 Window:OnClose(function()
     Lighting.Ambient = originalAmbient; Lighting.OutdoorAmbient = originalOutdoorAmbient
     Lighting.FogEnd = originalFogEnd; Lighting.Brightness = originalBrightness
     restoreDefaultCamera()
-    stopMusic()
     local char = LocalPlayer.Character
     if char then
         local hum = char:FindFirstChildOfClass("Humanoid")
