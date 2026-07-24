@@ -21,6 +21,7 @@ local Camera = Workspace.CurrentCamera
 
 repeat task.wait() until LocalPlayer:FindFirstChild("PlayerGui")
 
+-- 加载 WindUI 库
 local WindUI
 local CACHE_FILE = "WindUI_Cache_v2.lua"
 
@@ -64,7 +65,7 @@ if not WindUI then
     end
 end
 
--- 精简创建参数（移除 User, Folder, SideBarWidth 等可能导致失败的项）
+-- 创建窗口（精简参数，避免不兼容）
 local Window = WindUI:CreateWindow({
     Title = "VIP 脚本",
     Icon = "rbxassetid://6031066502",
@@ -79,6 +80,7 @@ if not Window then
     return
 end
 
+-- 隐藏最小化按钮（如果存在）
 pcall(function()
     local gui = Window.Gui or Window.Window or Window.MainGui
     if gui then
@@ -87,21 +89,76 @@ pcall(function()
     end
 end)
 
-local Tabs = {}
+-- ================== 全局变量 ==================
 local toggleRefs = {}
 local sliderRefs = {}
 
-local MainSection = Window:Section({ Title = "VIP 功能", Opened = true })
-Tabs.GeneralTab = MainSection:Tab({ Title = "通用", Icon = "star", ShowTabTitle = true })
-Tabs.WeirdBatTab = MainSection:Tab({ Title = "古怪的球棒", Icon = "star", ShowTabTitle = true })
-Tabs.NukeTab = MainSection:Tab({ Title = "合成核弹", Icon = "star", ShowTabTitle = true })
-Tabs.AssassinTab = MainSection:Tab({ Title = "沉默的刺客", Icon = "star", ShowTabTitle = true })
-
--- ================== 功能函数定义 ==================
+-- 加速
 local speedEnabled = false
 local originalWalkSpeed = 16
 local speedValue = 50
 
+-- 高跳
+local jumpEnabled = false
+local originalJumpPower = 50
+local jumpValue = 100
+
+-- 旋转
+local spinEnabled = false
+local spinConnection = nil
+local spinSpeed = 100
+
+-- 夜视
+local nightVisionEnabled = false
+local nightVisionThread = nil
+local originalAmbient = Lighting.Ambient
+local originalOutdoorAmbient = Lighting.OutdoorAmbient
+local originalFogEnd = Lighting.FogEnd
+local originalBrightness = Lighting.Brightness
+
+-- 吸人
+local attractEnabled = false
+local attractThread = nil
+
+-- 标记点
+local markObjects = {}
+local markPositions = { [1] = Vector3.zero, [2] = Vector3.zero, [3] = Vector3.zero }
+local loopTeleportEnabled = false
+local loopTeleportThread = nil
+
+-- 透视
+local espEnabled = false
+local espConnections = {}
+local espObjects = {}
+
+-- 自由/固定相机
+local freeCamEnabled = false
+local fixedCamEnabled = false
+local freeCamRenderConn = nil
+local fixedCamRenderConn = nil
+local freeCamSpeed = 50
+
+-- 自动秒杀
+local autoAttackEnabled = false
+local autoAttackThread = nil
+
+-- 合成核弹
+local autoMergeEnabled = false
+local autoMergeThread = nil
+local autoShieldEnabled = false
+local autoShieldThread = nil
+local shieldCooldownUntil = 0
+local cooldownConnected = false
+local autoUpgradeAllEnabled = false
+local autoUpgradeAllThread = nil
+
+-- 沉默刺客
+local assassinEnabled = false
+local assassinThread = nil
+local gachaEnabled = false
+local gachaThread = nil
+
+-- ================== 功能函数定义 ==================
 local function toggleSpeed(state)
     speedEnabled = state
     local char = LocalPlayer.Character
@@ -113,10 +170,6 @@ local function toggleSpeed(state)
     end
 end
 
-local jumpEnabled = false
-local originalJumpPower = 50
-local jumpValue = 100
-
 local function toggleJump(state)
     jumpEnabled = state
     local char = LocalPlayer.Character
@@ -127,10 +180,6 @@ local function toggleJump(state)
         else humanoid.JumpPower = originalJumpPower end
     end
 end
-
-local spinEnabled = false
-local spinConnection = nil
-local spinSpeed = 100
 
 local function toggleSpin(state)
     spinEnabled = state
@@ -157,13 +206,6 @@ local function toggleSpin(state)
     end
 end
 
-local nightVisionEnabled = false
-local nightVisionThread = nil
-local originalAmbient = Lighting.Ambient
-local originalOutdoorAmbient = Lighting.OutdoorAmbient
-local originalFogEnd = Lighting.FogEnd
-local originalBrightness = Lighting.Brightness
-
 local function toggleNightVision(state)
     nightVisionEnabled = state
     if state then
@@ -184,9 +226,6 @@ local function toggleNightVision(state)
         Lighting.Brightness = originalBrightness
     end
 end
-
-local attractEnabled = false
-local attractThread = nil
 
 local function toggleAttract(state)
     attractEnabled = state
@@ -223,11 +262,6 @@ local function toggleAttract(state)
     end
 end
 
-local markObjects = {}
-local markPositions = { [1] = Vector3.zero, [2] = Vector3.zero, [3] = Vector3.zero }
-local loopTeleportEnabled = false
-local loopTeleportThread = nil
-
 local function removeMark(index)
     if markObjects[index] then
         if markObjects[index].Part then markObjects[index].Part:Destroy() end
@@ -241,30 +275,17 @@ local function setMark(index)
         local pos = char.HumanoidRootPart.Position
         removeMark(index)
         local part = Instance.new("Part")
-        part.Anchored = true
-        part.CanCollide = false
-        part.Size = Vector3.new(0.2, 0.2, 0.2)
-        part.Transparency = 1
-        part.Position = pos
-        part.Parent = Workspace
+        part.Anchored = true; part.CanCollide = false; part.Size = Vector3.new(0.2, 0.2, 0.2); part.Transparency = 1
+        part.Position = pos; part.Parent = Workspace
         local bill = Instance.new("BillboardGui")
-        bill.Adornee = part
-        bill.Size = UDim2.new(0, 200, 0, 40)
-        bill.StudsOffset = Vector3.new(0,2,0)
-        bill.AlwaysOnTop = true
+        bill.Adornee = part; bill.Size = UDim2.new(0, 200, 0, 40); bill.StudsOffset = Vector3.new(0,2,0); bill.AlwaysOnTop = true
         bill.Parent = part
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1,0,1,0)
-        label.BackgroundTransparency = 1
-        label.Text = "标记点"..index
-        label.TextColor3 = Color3.fromRGB(255,255,0)
-        label.TextSize = 18
-        label.Font = Enum.Font.GothamBold
-        label.TextStrokeTransparency = 0
-        label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+        label.Size = UDim2.new(1,0,1,0); label.BackgroundTransparency = 1
+        label.Text = "标记点"..index; label.TextColor3 = Color3.fromRGB(255,255,0); label.TextSize = 18
+        label.Font = Enum.Font.GothamBold; label.TextStrokeTransparency = 0; label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
         label.Parent = bill
-        markObjects[index] = { Part = part }
-        markPositions[index] = pos
+        markObjects[index] = { Part = part }; markPositions[index] = pos
         WindUI:Notify({ Title = "标记点"..index, Content = "已设置", Duration = 1.5 })
     end
 end
@@ -293,41 +314,25 @@ local function toggleLoopTeleport(state)
     end
 end
 
-local espEnabled = false
-local espConnections = {}
-local espObjects = {}
-
 local function createESP(player)
     if not player.Character then return end
     local character = player.Character
     local highlight = Instance.new("Highlight")
-    highlight.FillColor = Color3.fromRGB(255, 105, 180)
-    highlight.FillTransparency = 0.5
-    highlight.OutlineColor = Color3.fromRGB(0, 255, 255)
-    highlight.OutlineTransparency = 0
-    highlight.Adornee = character
-    highlight.Parent = character
+    highlight.FillColor = Color3.fromRGB(255, 105, 180); highlight.FillTransparency = 0.5
+    highlight.OutlineColor = Color3.fromRGB(0, 255, 255); highlight.OutlineTransparency = 0
+    highlight.Adornee = character; highlight.Parent = character
     table.insert(espObjects, highlight)
-
     local head = character:FindFirstChild("Head")
     if head then
         pcall(function() head:FindFirstChild("ESP_NameTag"):Destroy() end)
         local billboard = Instance.new("BillboardGui")
-        billboard.Name = "ESP_NameTag"
-        billboard.Size = UDim2.new(0, 200, 0, 40)
-        billboard.StudsOffset = Vector3.new(0, 2.8, 0)
-        billboard.AlwaysOnTop = true
-        billboard.Parent = head
+        billboard.Name = "ESP_NameTag"; billboard.Size = UDim2.new(0, 200, 0, 40)
+        billboard.StudsOffset = Vector3.new(0, 2.8, 0); billboard.AlwaysOnTop = true; billboard.Parent = head
         local textLabel = Instance.new("TextLabel")
-        textLabel.Size = UDim2.new(1, 0, 1, 0)
-        textLabel.BackgroundTransparency = 1
-        textLabel.Text = player.Name
-        textLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
-        textLabel.TextSize = 10
-        textLabel.TextTransparency = 0.4
-        textLabel.Font = Enum.Font.GothamBold
-        textLabel.TextStrokeTransparency = 0.4
-        textLabel.TextStrokeColor3 = Color3.fromRGB(255, 105, 180)
+        textLabel.Size = UDim2.new(1, 0, 1, 0); textLabel.BackgroundTransparency = 1
+        textLabel.Text = player.Name; textLabel.TextColor3 = Color3.fromRGB(255, 105, 180); textLabel.TextSize = 10
+        textLabel.TextTransparency = 0.4; textLabel.Font = Enum.Font.GothamBold
+        textLabel.TextStrokeTransparency = 0.4; textLabel.TextStrokeColor3 = Color3.fromRGB(255, 105, 180)
         textLabel.Parent = billboard
         table.insert(espObjects, billboard)
     end
@@ -342,10 +347,7 @@ local function toggleESP(state)
             if player ~= LocalPlayer then
                 if player.Character then createESP(player) end
                 local conn = player.CharacterAdded:Connect(function()
-                    if espEnabled and player ~= LocalPlayer then
-                        task.wait(0.1)
-                        createESP(player)
-                    end
+                    if espEnabled and player ~= LocalPlayer then task.wait(0.1); createESP(player) end
                 end)
                 table.insert(espConnections, conn)
             end
@@ -353,10 +355,7 @@ local function toggleESP(state)
         local conn = Players.PlayerAdded:Connect(function(player)
             if espEnabled and player ~= LocalPlayer then
                 local charConn = player.CharacterAdded:Connect(function()
-                    if espEnabled and player ~= LocalPlayer then
-                        task.wait(0.1)
-                        createESP(player)
-                    end
+                    if espEnabled and player ~= LocalPlayer then task.wait(0.1); createESP(player) end
                 end)
                 table.insert(espConnections, charConn)
             end
@@ -369,12 +368,6 @@ local function toggleESP(state)
         espConnections = {}
     end
 end
-
-local freeCamEnabled = false
-local fixedCamEnabled = false
-local freeCamRenderConn = nil
-local fixedCamRenderConn = nil
-local freeCamSpeed = 50
 
 local function disableFreeCamInternal()
     freeCamEnabled = false
@@ -400,14 +393,9 @@ local function enableFreeCam()
     end
     if freeCamRenderConn then freeCamRenderConn:Disconnect() end
     freeCamEnabled = true
-    Camera.CameraType = Enum.CameraType.Scriptable
-    Camera.CameraSubject = nil
+    Camera.CameraType = Enum.CameraType.Scriptable; Camera.CameraSubject = nil
     freeCamRenderConn = RunService.RenderStepped:Connect(function(dt)
-        if not freeCamEnabled then
-            freeCamRenderConn:Disconnect()
-            freeCamRenderConn = nil
-            return
-        end
+        if not freeCamEnabled then freeCamRenderConn:Disconnect(); freeCamRenderConn = nil; return end
         local moveDir = Vector3.zero
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + Camera.CFrame.LookVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - Camera.CFrame.LookVector end
@@ -415,9 +403,7 @@ local function enableFreeCam()
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + Camera.CFrame.RightVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.E) then moveDir = moveDir + Vector3.new(0, 1, 0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.Q) then moveDir = moveDir + Vector3.new(0, -1, 0) end
-        if moveDir.Magnitude > 0 then
-            Camera.CFrame = Camera.CFrame + moveDir.Unit * freeCamSpeed * dt
-        end
+        if moveDir.Magnitude > 0 then Camera.CFrame = Camera.CFrame + moveDir.Unit * freeCamSpeed * dt end
         if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
             local delta = UserInputService:GetMouseDelta()
             local sensitivity = 0.3
@@ -439,20 +425,10 @@ local function enableFixedCam()
     if fixedCamRenderConn then fixedCamRenderConn:Disconnect() end
     fixedCamEnabled = true
     local fixedCFrame = Camera.CFrame
-    Camera.CameraType = Enum.CameraType.Scriptable
-    Camera.CameraSubject = nil
-    Camera.CFrame = fixedCFrame
+    Camera.CameraType = Enum.CameraType.Scriptable; Camera.CameraSubject = nil; Camera.CFrame = fixedCFrame
     fixedCamRenderConn = RunService.RenderStepped:Connect(function()
-        if not fixedCamEnabled then
-            fixedCamRenderConn:Disconnect()
-            fixedCamRenderConn = nil
-            return
-        end
-        pcall(function()
-            Camera.CameraType = Enum.CameraType.Scriptable
-            Camera.CameraSubject = nil
-            Camera.CFrame = fixedCFrame
-        end)
+        if not fixedCamEnabled then fixedCamRenderConn:Disconnect(); fixedCamRenderConn = nil; return end
+        pcall(function() Camera.CameraType = Enum.CameraType.Scriptable; Camera.CameraSubject = nil; Camera.CFrame = fixedCFrame end)
     end)
 end
 
@@ -460,9 +436,6 @@ local function disableFixedCam()
     disableFixedCamInternal()
     if not freeCamEnabled then restoreDefaultCamera() end
 end
-
-local autoAttackEnabled = false
-local autoAttackThread = nil
 
 local function setAutoAttack(state)
     autoAttackEnabled = state
@@ -475,9 +448,7 @@ local function setAutoAttack(state)
                     if tool then
                         local root = char:FindFirstChild("HumanoidRootPart")
                         if root then
-                            local myPos = root.Position
-                            local closestEnemy = nil
-                            local closestDist = 9990
+                            local myPos = root.Position; local closestEnemy = nil; local closestDist = 9990
                             for _, p in ipairs(Players:GetPlayers()) do
                                 if p ~= LocalPlayer and p.Character then
                                     local enemyRoot = p.Character:FindFirstChild("HumanoidRootPart")
@@ -485,10 +456,7 @@ local function setAutoAttack(state)
                                     local ff = p.Character:FindFirstChildOfClass("ForceField")
                                     if enemyRoot and hum and hum.Health > 0 and not ff then
                                         local dist = (enemyRoot.Position - myPos).Magnitude
-                                        if dist < closestDist then
-                                            closestDist = dist
-                                            closestEnemy = { model = p.Character, root = enemyRoot, dist = dist }
-                                        end
+                                        if dist < closestDist then closestDist = dist; closestEnemy = { model = p.Character, root = enemyRoot, dist = dist } end
                                     end
                                 end
                             end
@@ -515,9 +483,7 @@ local function setAutoAttack(state)
                                     },
                                     { { knockback = 50, isClosestEnemy = true, origin = closestEnemy.root.Position, enemyModel = closestEnemy.model, distance = closestEnemy.dist, direction = dir } }
                                 }
-                                pcall(function()
-                                    ReplicatedStorage:WaitForChild("Events"):WaitForChild("GameRemoteFunction"):InvokeServer(unpack(args))
-                                end)
+                                pcall(function() ReplicatedStorage:WaitForChild("Events"):WaitForChild("GameRemoteFunction"):InvokeServer(unpack(args)) end)
                             end
                         end
                     end
@@ -530,6 +496,7 @@ local function setAutoAttack(state)
     end
 end
 
+-- 合成核弹辅助函数
 local function safeServerTime()
     local ok, t = pcall(function() return workspace:GetServerTimeNow() end)
     return (ok and type(t) == "number") and t or tick()
@@ -613,9 +580,6 @@ local function getMergeablePair()
     return nil, nil
 end
 
-local autoMergeEnabled = false
-local autoMergeThread = nil
-
 local function setAutoMerge(state)
     autoMergeEnabled = state
     if state then
@@ -627,11 +591,9 @@ local function setAutoMerge(state)
                     local root = char:FindFirstChild("HumanoidRootPart")
                     if not root then return end
                     local nukeA, nukeB = getMergeablePair()
-                    if not nukeA or not nukeB then task.wait(0.5) return end
+                    if not nukeA or not nukeB then task.wait(0.5); return end
                     if char:FindFirstChildOfClass("Tool") then
-                        pcall(function()
-                            ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("Drop"):FireServer(root.CFrame)
-                        end)
+                        pcall(function() ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("Drop"):FireServer(root.CFrame) end)
                         task.wait(0.3)
                     end
                     root.CFrame = CFrame.new(nukeA:GetPivot().Position + Vector3.new(0, 2.5, 0))
@@ -640,9 +602,7 @@ local function setAutoMerge(state)
                     task.wait(0.35)
                     root.CFrame = CFrame.new(nukeB:GetPivot().Position + Vector3.new(0, 2.5, 0))
                     task.wait(0.15)
-                    pcall(function()
-                        ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Remotes"):WaitForChild("Networking"):WaitForChild("RE/Merge/MergeRequest"):FireServer(nukeB)
-                    end)
+                    pcall(function() ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Remotes"):WaitForChild("Networking"):WaitForChild("RE/Merge/MergeRequest"):FireServer(nukeB) end)
                     task.wait(0.5)
                     if root and root.Parent then
                         pcall(function() ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("Drop"):FireServer(root.CFrame) end)
@@ -662,11 +622,6 @@ local function setAutoMerge(state)
         if autoMergeThread then task.cancel(autoMergeThread); autoMergeThread = nil end
     end
 end
-
-local autoShieldEnabled = false
-local autoShieldThread = nil
-local shieldCooldownUntil = safeServerTime() - 1
-local cooldownConnected = false
 
 local function connectCooldownEvent()
     if cooldownConnected then return end
@@ -705,13 +660,8 @@ local function setAutoShield(state)
 end
 
 local function tryPurchaseUpgrade(upgradeType)
-    pcall(function()
-        ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("PurchaseUpgrade"):FireServer(upgradeType)
-    end)
+    pcall(function() ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("PurchaseUpgrade"):FireServer(upgradeType) end)
 end
-
-local autoUpgradeAllEnabled = false
-local autoUpgradeAllThread = nil
 
 local function setAutoUpgradeAll(state)
     autoUpgradeAllEnabled = state
@@ -727,9 +677,6 @@ local function setAutoUpgradeAll(state)
         if autoUpgradeAllThread then task.cancel(autoUpgradeAllThread); autoUpgradeAllThread = nil end
     end
 end
-
-local assassinEnabled = false
-local assassinThread = nil
 
 local function setAssassin(state)
     assassinEnabled = state
@@ -751,9 +698,6 @@ local function setAssassin(state)
     end
 end
 
-local gachaEnabled = false
-local gachaThread = nil
-
 local function setGacha(state)
     gachaEnabled = state
     if state then
@@ -772,85 +716,87 @@ local function setGacha(state)
     end
 end
 
--- ================== UI 构建 ==================
-toggleRefs.esp = Tabs.GeneralTab:Toggle({ Title = "透视", Value = false, Callback = function(state) toggleESP(state) end })
+-- ================== 创建 UI 选项卡和控件 ==================
+local GeneralTab = Window:Tab({ Title = "通用", Icon = "star" })
+local WeirdBatTab = Window:Tab({ Title = "古怪的球棒", Icon = "star" })
+local NukeTab = Window:Tab({ Title = "合成核弹", Icon = "star" })
+local AssassinTab = Window:Tab({ Title = "沉默的刺客", Icon = "star" })
 
-toggleRefs.speed = Tabs.GeneralTab:Toggle({ Title = "加速", Value = false, Callback = toggleSpeed })
-sliderRefs.speed = Tabs.GeneralTab:Slider({
+-- --- 通用标签页 ---
+toggleRefs.esp = GeneralTab:Toggle({ Title = "透视", Value = false, Callback = toggleESP })
+
+toggleRefs.speed = GeneralTab:Toggle({ Title = "加速", Value = false, Callback = toggleSpeed })
+sliderRefs.speed = GeneralTab:Slider({
     Title = "速度调节", Value = { Min = 16, Max = 2000, Default = 50 },
     Callback = function(value)
         speedValue = value
         if speedEnabled then
             local char = LocalPlayer.Character
-            if char then
-                local humanoid = char:FindFirstChildOfClass("Humanoid")
-                if humanoid then humanoid.WalkSpeed = value end
+            if char and char:FindFirstChildOfClass("Humanoid") then
+                char:FindFirstChildOfClass("Humanoid").WalkSpeed = value
             end
         end
     end
 })
-Tabs.GeneralTab:Button({
+GeneralTab:Button({
     Title = "恢复初始速度",
     Callback = function()
         local char = LocalPlayer.Character
-        if not char then return end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then humanoid.WalkSpeed = 16; speedEnabled = false end
+        if char and char:FindFirstChildOfClass("Humanoid") then
+            char:FindFirstChildOfClass("Humanoid").WalkSpeed = 16; speedEnabled = false
+        end
     end
 })
 
-toggleRefs.jump = Tabs.GeneralTab:Toggle({ Title = "高跳", Value = false, Callback = toggleJump })
-sliderRefs.jump = Tabs.GeneralTab:Slider({
+toggleRefs.jump = GeneralTab:Toggle({ Title = "高跳", Value = false, Callback = toggleJump })
+sliderRefs.jump = GeneralTab:Slider({
     Title = "跳跃高度调节", Value = { Min = 50, Max = 2000, Default = 100 },
     Callback = function(value)
         jumpValue = value
         if jumpEnabled then
             local char = LocalPlayer.Character
-            if char then
-                local humanoid = char:FindFirstChildOfClass("Humanoid")
-                if humanoid then humanoid.JumpPower = value end
+            if char and char:FindFirstChildOfClass("Humanoid") then
+                char:FindFirstChildOfClass("Humanoid").JumpPower = value
             end
         end
     end
 })
-Tabs.GeneralTab:Button({
+GeneralTab:Button({
     Title = "恢复初始跳跃",
     Callback = function()
         local char = LocalPlayer.Character
-        if not char then return end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then humanoid.JumpPower = 50; jumpEnabled = false end
+        if char and char:FindFirstChildOfClass("Humanoid") then
+            char:FindFirstChildOfClass("Humanoid").JumpPower = 50; jumpEnabled = false
+        end
     end
 })
 
-toggleRefs.spin = Tabs.GeneralTab:Toggle({ Title = "马可波罗", Desc = "baby，你晕了吗", Value = false, Callback = toggleSpin })
-sliderRefs.spin = Tabs.GeneralTab:Slider({
+toggleRefs.spin = GeneralTab:Toggle({ Title = "马可波罗", Desc = "baby，你晕了吗", Value = false, Callback = toggleSpin })
+sliderRefs.spin = GeneralTab:Slider({
     Title = "旋转速度", Desc = "度/秒", Value = { Min = 10, Max = 10000, Default = 100 },
     Callback = function(value) spinSpeed = value end
 })
 
-toggleRefs.nightVision = Tabs.GeneralTab:Toggle({ Title = "夜视", Desc = "提亮画面，看清黑暗区域", Value = false, Callback = toggleNightVision })
-toggleRefs.attract = Tabs.GeneralTab:Toggle({ Title = "吸人", Desc = "自动传送到最近的玩家附近", Value = false, Callback = toggleAttract })
+toggleRefs.nightVision = GeneralTab:Toggle({ Title = "夜视", Desc = "提亮画面", Value = false, Callback = toggleNightVision })
+toggleRefs.attract = GeneralTab:Toggle({ Title = "吸人", Desc = "自动传送到最近玩家", Value = false, Callback = toggleAttract })
 
-local CameraSection = Tabs.GeneralTab:Section({ Title = "视角相机", Opened = false })
+-- 视角相机折叠区域
+local CameraSection = GeneralTab:Section({ Title = "视角相机", Opened = false })
 toggleRefs.freeCam = CameraSection:Toggle({
-    Title = "自由移动相机视角", Desc = "WASD移动，QE升降，右键旋转视角", Value = false,
-    Callback = function(state)
-        if state then enableFreeCam() else disableFreeCam() end
-    end
+    Title = "自由移动相机视角", Desc = "WASD移动，QE升降", Value = false,
+    Callback = function(state) if state then enableFreeCam() else disableFreeCam() end end
 })
 sliderRefs.freeCam = CameraSection:Slider({
     Title = "自由视角速度", Value = { Min = 10, Max = 200, Default = 50 },
     Callback = function(value) freeCamSpeed = value end
 })
 toggleRefs.fixedCam = CameraSection:Toggle({
-    Title = "固定相机视角", Desc = "将相机固定在当前位置不动", Value = false,
-    Callback = function(state)
-        if state then enableFixedCam() else disableFixedCam() end
-    end
+    Title = "固定相机视角", Desc = "固定当前位置", Value = false,
+    Callback = function(state) if state then enableFixedCam() else disableFixedCam() end end
 })
 
-local MarkSection = Tabs.GeneralTab:Section({ Title = "标记点与循环传送", Opened = false })
+-- 标记点与循环传送
+local MarkSection = GeneralTab:Section({ Title = "标记点与循环传送", Opened = false })
 MarkSection:Button({ Title = "标记点1", Callback = function() setMark(1) end })
 MarkSection:Button({ Title = "清除标记点1", Callback = function() removeMark(1); markPositions[1] = Vector3.zero end })
 MarkSection:Button({ Title = "标记点2", Callback = function() setMark(2) end })
@@ -859,16 +805,15 @@ MarkSection:Button({ Title = "标记点3", Callback = function() setMark(3) end 
 MarkSection:Button({ Title = "清除标记点3", Callback = function() removeMark(3); markPositions[3] = Vector3.zero end })
 toggleRefs.loopTeleport = MarkSection:Toggle({ Title = "循环传送", Value = false, Callback = toggleLoopTeleport })
 
-local TeleSection = Tabs.GeneralTab:Section({ Title = "坐标传送", Opened = false })
+-- 坐标传送
+local TeleSection = GeneralTab:Section({ Title = "坐标传送", Opened = false })
 TeleSection:Button({
     Title = "复制当前坐标", Callback = function()
         local char = LocalPlayer.Character
         if char and char:FindFirstChild("HumanoidRootPart") then
             local pos = char.HumanoidRootPart.Position
             local str = string.format("%d,%d,%d", math.round(pos.X), math.round(pos.Y), math.round(pos.Z))
-            if setclipboard then setclipboard(str) else
-                StarterGui:SetCore("SendNotification",{Title="坐标已复制",Text=str,Duration=2})
-            end
+            if setclipboard then setclipboard(str) else StarterGui:SetCore("SendNotification",{Title="坐标已复制",Text=str,Duration=2}) end
             WindUI:Notify({Title="复制成功",Content=str,Duration=1.5})
         end
     end
@@ -884,23 +829,19 @@ TeleSection:Button({
                 char.HumanoidRootPart.CFrame = CFrame.new(tonumber(x) or 0, tonumber(y) or 0, tonumber(z) or 0)
                 WindUI:Notify({Title="传送成功",Content=inputCoord,Duration=1})
             end
-        else
-            WindUI:Notify({Title="格式错误",Content="请使用 X,Y,Z 格式",Duration=2})
-        end
+        else WindUI:Notify({Title="格式错误",Content="请使用 X,Y,Z 格式",Duration=2}) end
     end
 })
 
-Tabs.GeneralTab:Button({
+GeneralTab:Button({
     Title = "一键关闭所有功能",
     Callback = function()
         for _, t in pairs(toggleRefs) do pcall(function() t:SetValue(false) end) end
         toggleESP(false)
         if spinConnection then spinConnection:Disconnect(); spinConnection = nil end
         restoreDefaultCamera()
-        Lighting.Ambient = originalAmbient
-        Lighting.OutdoorAmbient = originalOutdoorAmbient
-        Lighting.FogEnd = originalFogEnd
-        Lighting.Brightness = originalBrightness
+        Lighting.Ambient = originalAmbient; Lighting.OutdoorAmbient = originalOutdoorAmbient
+        Lighting.FogEnd = originalFogEnd; Lighting.Brightness = originalBrightness
         local char = LocalPlayer.Character
         if char then
             local hum = char:FindFirstChildOfClass("Humanoid")
@@ -911,10 +852,8 @@ Tabs.GeneralTab:Button({
     end
 })
 
--- 古怪的球棒
-local chainKillEnabled = false
-local chainKillThread = nil
-toggleRefs.chainKill = Tabs.WeirdBatTab:Toggle({
+-- --- 古怪的球棒标签页 ---
+toggleRefs.chainKill = WeirdBatTab:Toggle({
     Title = "秒杀", Value = false,
     Callback = function(s)
         chainKillEnabled = s
@@ -924,9 +863,7 @@ toggleRefs.chainKill = Tabs.WeirdBatTab:Toggle({
                     local char = LocalPlayer.Character
                     if char then
                         local tool = char:FindFirstChildOfClass("Tool") or LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
-                        if tool then
-                            ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Chainlinker"):FireServer(tool)
-                        end
+                        if tool then ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Chainlinker"):FireServer(tool) end
                     end
                     task.wait(0.01)
                 end
@@ -934,10 +871,11 @@ toggleRefs.chainKill = Tabs.WeirdBatTab:Toggle({
         else if chainKillThread then task.cancel(chainKillThread); chainKillThread = nil end end
     end
 })
+-- 注：此处原脚本中有 chainKillEnabled/chainKillThread 变量，需提前声明
+local chainKillEnabled = false
+local chainKillThread = nil
 
-local shotbatKillEnabled = false
-local shotbatKillThread = nil
-toggleRefs.shotbatKill = Tabs.WeirdBatTab:Toggle({
+toggleRefs.shotbatKill = WeirdBatTab:Toggle({
     Title = "射到精尽(射门棒)", Value = false,
     Callback = function(s)
         shotbatKillEnabled = s
@@ -947,9 +885,7 @@ toggleRefs.shotbatKill = Tabs.WeirdBatTab:Toggle({
                     local char = LocalPlayer.Character
                     if char then
                         local tool = char:FindFirstChild("Shotbat") or LocalPlayer.Backpack:FindFirstChild("Shotbat")
-                        if tool then
-                            ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Shotbat"):WaitForChild("Blast"):FireServer(tool)
-                        end
+                        if tool then ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Shotbat"):WaitForChild("Blast"):FireServer(tool) end
                     end
                     task.wait(0.01)
                 end
@@ -957,10 +893,10 @@ toggleRefs.shotbatKill = Tabs.WeirdBatTab:Toggle({
         else if shotbatKillThread then task.cancel(shotbatKillThread); shotbatKillThread = nil end end
     end
 })
+local shotbatKillEnabled = false
+local shotbatKillThread = nil
 
-local tripbatKillEnabled = false
-local tripbatKillThread = nil
-toggleRefs.tripbatKill = Tabs.WeirdBatTab:Toggle({
+toggleRefs.tripbatKill = WeirdBatTab:Toggle({
     Title = "玉面手雷王(子空间跳跃棒)", Value = false,
     Callback = function(s)
         tripbatKillEnabled = s
@@ -970,9 +906,7 @@ toggleRefs.tripbatKill = Tabs.WeirdBatTab:Toggle({
                     local char = LocalPlayer.Character
                     if char then
                         local tool = char:FindFirstChild("Subspace Tripbat") or LocalPlayer.Backpack:FindFirstChild("Subspace Tripbat")
-                        if tool then
-                            ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Subspace Tripbat"):WaitForChild("Tripmine Throw"):FireServer(tool)
-                        end
+                        if tool then ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Subspace Tripbat"):WaitForChild("Tripmine Throw"):FireServer(tool) end
                     end
                     task.wait(0.01)
                 end
@@ -980,10 +914,10 @@ toggleRefs.tripbatKill = Tabs.WeirdBatTab:Toggle({
         else if tripbatKillThread then task.cancel(tripbatKillThread); tripbatKillThread = nil end end
     end
 })
+local tripbatKillEnabled = false
+local tripbatKillThread = nil
 
-local gubbyEnabled = false
-local gubbyThread = nil
-toggleRefs.gubby = Tabs.WeirdBatTab:Toggle({
+toggleRefs.gubby = WeirdBatTab:Toggle({
     Title = "上吧皮卡丘(古比球棒)", Value = false,
     Callback = function(s)
         gubbyEnabled = s
@@ -1009,10 +943,10 @@ toggleRefs.gubby = Tabs.WeirdBatTab:Toggle({
         else if gubbyThread then task.cancel(gubbyThread); gubbyThread = nil end end
     end
 })
+local gubbyEnabled = false
+local gubbyThread = nil
 
-local poisonKillEnabled = false
-local poisonKillThread = nil
-toggleRefs.poisonKill = Tabs.WeirdBatTab:Toggle({
+toggleRefs.poisonKill = WeirdBatTab:Toggle({
     Title = "绝命毒师(毒液棒)", Value = false,
     Callback = function(s)
         poisonKillEnabled = s
@@ -1022,9 +956,7 @@ toggleRefs.poisonKill = Tabs.WeirdBatTab:Toggle({
                     local char = LocalPlayer.Character
                     if char then
                         local tool = char:FindFirstChild("Poison Bat") or LocalPlayer.Backpack:FindFirstChild("Poison Bat")
-                        if tool then
-                            ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Poison Bat"):WaitForChild("Poison Cloud"):FireServer(tool)
-                        end
+                        if tool then ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Poison Bat"):WaitForChild("Poison Cloud"):FireServer(tool) end
                     end
                     task.wait(0.01)
                 end
@@ -1032,10 +964,10 @@ toggleRefs.poisonKill = Tabs.WeirdBatTab:Toggle({
         else if poisonKillThread then task.cancel(poisonKillThread); poisonKillThread = nil end end
     end
 })
+local poisonKillEnabled = false
+local poisonKillThread = nil
 
-local aquaKillEnabled = false
-local aquaKillThread = nil
-toggleRefs.aquaKill = Tabs.WeirdBatTab:Toggle({
+toggleRefs.aquaKill = WeirdBatTab:Toggle({
     Title = "推推乐（aqua球棒）", Value = false,
     Callback = function(s)
         aquaKillEnabled = s
@@ -1045,9 +977,7 @@ toggleRefs.aquaKill = Tabs.WeirdBatTab:Toggle({
                     local char = LocalPlayer.Character
                     if char then
                         local tool = char:FindFirstChild("Aqua Bat") or LocalPlayer.Backpack:FindFirstChild("Aqua Bat")
-                        if tool then
-                            ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Aqua Bat"):WaitForChild("Aqua Power"):FireServer(tool)
-                        end
+                        if tool then ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Aqua Bat"):WaitForChild("Aqua Power"):FireServer(tool) end
                     end
                     task.wait(0.1)
                 end
@@ -1055,10 +985,10 @@ toggleRefs.aquaKill = Tabs.WeirdBatTab:Toggle({
         else if aquaKillThread then task.cancel(aquaKillThread); aquaKillThread = nil end end
     end
 })
+local aquaKillEnabled = false
+local aquaKillThread = nil
 
-local electroKillEnabled = false
-local electroKillThread = nil
-toggleRefs.electroKill = Tabs.WeirdBatTab:Toggle({
+toggleRefs.electroKill = WeirdBatTab:Toggle({
     Title = "五雷轰顶(咖喱棒)", Value = false,
     Callback = function(s)
         electroKillEnabled = s
@@ -1080,9 +1010,7 @@ toggleRefs.electroKill = Tabs.WeirdBatTab:Toggle({
                         if tool then
                             local root = char:FindFirstChild("HumanoidRootPart")
                             if root then
-                                local myPos = root.Position
-                                local closestDist = 1000
-                                local newTarget = nil
+                                local myPos = root.Position; local closestDist = 1000; local newTarget = nil
                                 for _, p in ipairs(Players:GetPlayers()) do
                                     if p ~= LocalPlayer and p.Character then
                                         local enemyRoot = p.Character:FindFirstChild("HumanoidRootPart")
@@ -1105,10 +1033,10 @@ toggleRefs.electroKill = Tabs.WeirdBatTab:Toggle({
         else if electroKillThread then task.cancel(electroKillThread); electroKillThread = nil end end
     end
 })
+local electroKillEnabled = false
+local electroKillThread = nil
 
-local antiFallEnabled = false
-local antiFallThread = nil
-toggleRefs.antiFall = Tabs.WeirdBatTab:Toggle({
+toggleRefs.antiFall = WeirdBatTab:Toggle({
     Title = "防坠落", Value = false,
     Callback = function(s)
         antiFallEnabled = s
@@ -1127,8 +1055,10 @@ toggleRefs.antiFall = Tabs.WeirdBatTab:Toggle({
         else if antiFallThread then task.cancel(antiFallThread); antiFallThread = nil end end
     end
 })
+local antiFallEnabled = false
+local antiFallThread = nil
 
-Tabs.WeirdBatTab:Button({
+WeirdBatTab:Button({
     Title = "无限提升(力量棒)",
     Callback = function()
         task.spawn(function()
@@ -1136,9 +1066,7 @@ Tabs.WeirdBatTab:Button({
                 local char = LocalPlayer.Character
                 if char then
                     local tool = char:FindFirstChild("Power Bat") or LocalPlayer.Backpack:FindFirstChild("Power Bat")
-                    if tool then
-                        ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Power Bat"):WaitForChild("Power Up"):FireServer(tool)
-                    end
+                    if tool then ReplicatedStorage:WaitForChild("BatRemotes"):WaitForChild("Power Bat"):WaitForChild("Power Up"):FireServer(tool) end
                 end
                 task.wait(0.01)
             end
@@ -1146,19 +1074,20 @@ Tabs.WeirdBatTab:Button({
     end
 })
 
-toggleRefs.autoMerge = Tabs.NukeTab:Toggle({ Title = "自动合成", Desc = "同等级合成后立即丢弃，并传送到Y=50高空", Value = false, Callback = setAutoMerge })
-toggleRefs.autoShield = Tabs.NukeTab:Toggle({ Title = "自动防护罩", Desc = "冷却结束自动开罩", Value = false, Callback = setAutoShield })
-toggleRefs.autoUpgradeAll = Tabs.NukeTab:Toggle({ Title = "自动升级（全部）", Desc = "每30秒购买全部升级", Value = false, Callback = setAutoUpgradeAll })
+-- --- 合成核弹标签页 ---
+toggleRefs.autoMerge = NukeTab:Toggle({ Title = "自动合成", Desc = "同等级合成后丢弃，传送到Y=50高空", Value = false, Callback = setAutoMerge })
+toggleRefs.autoShield = NukeTab:Toggle({ Title = "自动防护罩", Desc = "冷却结束自动开罩", Value = false, Callback = setAutoShield })
+toggleRefs.autoUpgradeAll = NukeTab:Toggle({ Title = "自动升级（全部）", Desc = "每30秒购买全部升级", Value = false, Callback = setAutoUpgradeAll })
 
-toggleRefs.assassin = Tabs.AssassinTab:Toggle({ Title = "强制显示模型", Value = false, Callback = setAssassin })
-toggleRefs.autoAttack = Tabs.AssassinTab:Toggle({ Title = "自动秒杀全图", Desc = "全图自动挥刀击杀", Value = false, Callback = setAutoAttack })
-toggleRefs.gacha = Tabs.AssassinTab:Toggle({ Title = "自动开箱(神圣)", Value = false, Callback = setGacha })
+-- --- 沉默的刺客标签页 ---
+toggleRefs.assassin = AssassinTab:Toggle({ Title = "强制显示模型", Value = false, Callback = setAssassin })
+toggleRefs.autoAttack = AssassinTab:Toggle({ Title = "自动秒杀全图", Desc = "全图自动挥刀击杀", Value = false, Callback = setAutoAttack })
+toggleRefs.gacha = AssassinTab:Toggle({ Title = "自动开箱(神圣)", Value = false, Callback = setGacha })
 
+-- ================== 窗口关闭回调 ==================
 Window:OnClose(function()
-    Lighting.Ambient = originalAmbient
-    Lighting.OutdoorAmbient = originalOutdoorAmbient
-    Lighting.FogEnd = originalFogEnd
-    Lighting.Brightness = originalBrightness
+    Lighting.Ambient = originalAmbient; Lighting.OutdoorAmbient = originalOutdoorAmbient
+    Lighting.FogEnd = originalFogEnd; Lighting.Brightness = originalBrightness
     restoreDefaultCamera()
     local char = LocalPlayer.Character
     if char then
@@ -1167,8 +1096,10 @@ Window:OnClose(function()
     end
 end)
 
+-- 默认选中第一个标签
 Window:SelectTab(1)
 
+-- ================== 角色重生处理 ==================
 LocalPlayer.CharacterAdded:Connect(function(char)
     local function applyStats()
         local hum = char:FindFirstChildOfClass("Humanoid")
@@ -1188,7 +1119,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- 快捷键
+-- ================== 快捷键 ==================
 local shiftBoostEnabled = false
 local shiftOriginalSpeed = 16
 
@@ -1200,154 +1131,89 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
             local char = LocalPlayer.Character
             if char then
                 local humanoid = char:FindFirstChildOfClass("Humanoid")
-                if humanoid then
-                    shiftOriginalSpeed = humanoid.WalkSpeed
-                    humanoid.WalkSpeed = speedValue
-                end
+                if humanoid then shiftOriginalSpeed = humanoid.WalkSpeed; humanoid.WalkSpeed = speedValue end
             end
         end
         return
     end
     local key = input.KeyCode
     local handled = false
-    local notifyTitle = "快捷键"
     local notifyContent = ""
     if key == Enum.KeyCode.F1 then
-        local newState = not espEnabled
-        espEnabled = newState
-        toggleESP(newState)
+        local newState = not espEnabled; espEnabled = newState; toggleESP(newState)
         pcall(function() toggleRefs.esp:SetValue(newState) end)
-        notifyContent = "透视: " .. (newState and "开启" or "关闭")
-        handled = true
+        notifyContent = "透视: " .. (newState and "开启" or "关闭"); handled = true
     elseif key == Enum.KeyCode.F2 then
-        local newState = not speedEnabled
-        speedEnabled = newState
-        toggleSpeed(newState)
+        local newState = not speedEnabled; speedEnabled = newState; toggleSpeed(newState)
         pcall(function() toggleRefs.speed:SetValue(newState) end)
-        notifyContent = "加速: " .. (newState and "开启" or "关闭")
-        handled = true
+        notifyContent = "加速: " .. (newState and "开启" or "关闭"); handled = true
     elseif key == Enum.KeyCode.F3 then
-        local newState = not jumpEnabled
-        jumpEnabled = newState
-        toggleJump(newState)
+        local newState = not jumpEnabled; jumpEnabled = newState; toggleJump(newState)
         pcall(function() toggleRefs.jump:SetValue(newState) end)
-        notifyContent = "高跳: " .. (newState and "开启" or "关闭")
-        handled = true
+        notifyContent = "高跳: " .. (newState and "开启" or "关闭"); handled = true
     elseif key == Enum.KeyCode.F4 then
-        local newState = not attractEnabled
-        attractEnabled = newState
-        toggleAttract(newState)
+        local newState = not attractEnabled; attractEnabled = newState; toggleAttract(newState)
         pcall(function() toggleRefs.attract:SetValue(newState) end)
-        notifyContent = "吸人: " .. (newState and "开启" or "关闭")
-        handled = true
+        notifyContent = "吸人: " .. (newState and "开启" or "关闭"); handled = true
     elseif key == Enum.KeyCode.F5 then
-        local newState = not nightVisionEnabled
-        nightVisionEnabled = newState
-        toggleNightVision(newState)
+        local newState = not nightVisionEnabled; nightVisionEnabled = newState; toggleNightVision(newState)
         pcall(function() toggleRefs.nightVision:SetValue(newState) end)
-        notifyContent = "夜视: " .. (newState and "开启" or "关闭")
-        handled = true
+        notifyContent = "夜视: " .. (newState and "开启" or "关闭"); handled = true
     elseif key == Enum.KeyCode.F6 then
-        if not freeCamEnabled then
-            enableFreeCam()
-            pcall(function() toggleRefs.freeCam:SetValue(true) end)
-            notifyContent = "自由相机: 开启"
-        else
-            disableFreeCam()
-            pcall(function() toggleRefs.freeCam:SetValue(false) end)
-            notifyContent = "自由相机: 关闭"
-        end
+        if not freeCamEnabled then enableFreeCam(); pcall(function() toggleRefs.freeCam:SetValue(true) end); notifyContent = "自由相机: 开启"
+        else disableFreeCam(); pcall(function() toggleRefs.freeCam:SetValue(false) end); notifyContent = "自由相机: 关闭" end
         handled = true
     elseif key == Enum.KeyCode.F7 then
-        if not fixedCamEnabled then
-            enableFixedCam()
-            pcall(function() toggleRefs.fixedCam:SetValue(true) end)
-            notifyContent = "固定相机: 开启"
-        else
-            disableFixedCam()
-            pcall(function() toggleRefs.fixedCam:SetValue(false) end)
-            notifyContent = "固定相机: 关闭"
-        end
+        if not fixedCamEnabled then enableFixedCam(); pcall(function() toggleRefs.fixedCam:SetValue(true) end); notifyContent = "固定相机: 开启"
+        else disableFixedCam(); pcall(function() toggleRefs.fixedCam:SetValue(false) end); notifyContent = "固定相机: 关闭" end
         handled = true
     elseif key == Enum.KeyCode.F8 then
-        local newState = not loopTeleportEnabled
-        loopTeleportEnabled = newState
-        toggleLoopTeleport(newState)
+        local newState = not loopTeleportEnabled; loopTeleportEnabled = newState; toggleLoopTeleport(newState)
         pcall(function() toggleRefs.loopTeleport:SetValue(newState) end)
-        notifyContent = "循环传送: " .. (newState and "开启" or "关闭")
-        handled = true
+        notifyContent = "循环传送: " .. (newState and "开启" or "关闭"); handled = true
     elseif key == Enum.KeyCode.F9 then
         for _, t in pairs(toggleRefs) do pcall(function() t:SetValue(false) end) end
         toggleESP(false)
         if spinConnection then spinConnection:Disconnect(); spinConnection = nil end
         restoreDefaultCamera()
-        Lighting.Ambient = originalAmbient
-        Lighting.OutdoorAmbient = originalOutdoorAmbient
-        Lighting.FogEnd = originalFogEnd
-        Lighting.Brightness = originalBrightness
+        Lighting.Ambient = originalAmbient; Lighting.OutdoorAmbient = originalOutdoorAmbient
+        Lighting.FogEnd = originalFogEnd; Lighting.Brightness = originalBrightness
         local char = LocalPlayer.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hum.AutoRotate = true; hum.WalkSpeed = 16; hum.JumpPower = 50 end
-        end
+        if char then local hum = char:FindFirstChildOfClass("Humanoid") if hum then hum.AutoRotate = true; hum.WalkSpeed = 16; hum.JumpPower = 50 end end
         speedEnabled = false; jumpEnabled = false
-        notifyContent = "一键关闭所有功能"
-        handled = true
+        notifyContent = "一键关闭所有功能"; handled = true
     elseif key == Enum.KeyCode.F10 then
-        local newState = not autoAttackEnabled
-        autoAttackEnabled = newState
-        setAutoAttack(newState)
+        local newState = not autoAttackEnabled; autoAttackEnabled = newState; setAutoAttack(newState)
         pcall(function() toggleRefs.autoAttack:SetValue(newState) end)
-        notifyContent = "自动秒杀全图: " .. (newState and "开启" or "关闭")
-        handled = true
+        notifyContent = "自动秒杀全图: " .. (newState and "开启" or "关闭"); handled = true
     elseif key == Enum.KeyCode.F11 then
-        local newState = not autoMergeEnabled
-        autoMergeEnabled = newState
-        setAutoMerge(newState)
+        local newState = not autoMergeEnabled; autoMergeEnabled = newState; setAutoMerge(newState)
         pcall(function() toggleRefs.autoMerge:SetValue(newState) end)
-        notifyContent = "自动合成: " .. (newState and "开启" or "关闭")
-        handled = true
+        notifyContent = "自动合成: " .. (newState and "开启" or "关闭"); handled = true
     elseif key == Enum.KeyCode.F12 then
-        local newState = not autoShieldEnabled
-        autoShieldEnabled = newState
-        setAutoShield(newState)
+        local newState = not autoShieldEnabled; autoShieldEnabled = newState; setAutoShield(newState)
         pcall(function() toggleRefs.autoShield:SetValue(newState) end)
-        notifyContent = "自动防护罩: " .. (newState and "开启" or "关闭")
-        handled = true
+        notifyContent = "自动防护罩: " .. (newState and "开启" or "关闭"); handled = true
     elseif key == Enum.KeyCode.One then
         local pos = markPositions[1]
         if pos ~= Vector3.zero then
             local char = LocalPlayer.Character
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                char.HumanoidRootPart.CFrame = CFrame.new(pos)
-                notifyContent = "传送到标记点1"
-                handled = true
-            end
+            if char and char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.CFrame = CFrame.new(pos); notifyContent = "传送到标记点1"; handled = true end
         else notifyContent = "标记点1未设置"; handled = true end
     elseif key == Enum.KeyCode.Two then
         local pos = markPositions[2]
         if pos ~= Vector3.zero then
             local char = LocalPlayer.Character
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                char.HumanoidRootPart.CFrame = CFrame.new(pos)
-                notifyContent = "传送到标记点2"
-                handled = true
-            end
+            if char and char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.CFrame = CFrame.new(pos); notifyContent = "传送到标记点2"; handled = true end
         else notifyContent = "标记点2未设置"; handled = true end
     elseif key == Enum.KeyCode.Three then
         local pos = markPositions[3]
         if pos ~= Vector3.zero then
             local char = LocalPlayer.Character
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                char.HumanoidRootPart.CFrame = CFrame.new(pos)
-                notifyContent = "传送到标记点3"
-                handled = true
-            end
+            if char and char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.CFrame = CFrame.new(pos); notifyContent = "传送到标记点3"; handled = true end
         else notifyContent = "标记点3未设置"; handled = true end
     end
-    if handled then
-        pcall(function() WindUI:Notify({ Title = notifyTitle, Content = notifyContent, Duration = 1.5 }) end)
-    end
+    if handled then pcall(function() WindUI:Notify({ Title = "快捷键", Content = notifyContent, Duration = 1.5 }) end) end
 end)
 
 UserInputService.InputEnded:Connect(function(input, gameProcessed)
@@ -1376,15 +1242,12 @@ UserInputService.InputChanged:Connect(function(input, gameProcessed)
                     if humanoid then humanoid.WalkSpeed = speedValue end
                 end
             end
-            pcall(function()
-                if sliderRefs.speed and sliderRefs.speed.SetValue then
-                    sliderRefs.speed:SetValue(speedValue)
-                end
-            end)
+            pcall(function() if sliderRefs.speed and sliderRefs.speed.SetValue then sliderRefs.speed:SetValue(speedValue) end end)
         end
     end
 end)
 
+-- ================== 快捷键提示标签 ==================
 pcall(function()
     local gui = Window.Gui or Window.Window or Window.MainGui
     if gui then
@@ -1411,4 +1274,4 @@ Shift 临时加速 | 滚轮 调速]]
     end
 end)
 
-WindUI:Notify({ Title = "VIP 脚本", Content = "加载成功！电脑端快捷键已启用", Duration = 3 })
+WindUI:Notify({ Title = "VIP 脚本", Content = "加载成功！所有功能就绪", Duration = 3 })
