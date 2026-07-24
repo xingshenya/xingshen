@@ -40,10 +40,10 @@ if not WindUI then
         "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
         "https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/main.lua",
     }
-    
+
     local loaded = false
     local results = {}
-    
+
     for idx, url in ipairs(sources) do
         task.spawn(function()
             if loaded then return end
@@ -67,12 +67,12 @@ if not WindUI then
             end
         end)
     end
-    
+
     local start = tick()
     while not loaded and tick() - start < 6 do
         task.wait(0.05)
     end
-    
+
     for _, r in ipairs(results) do
         if type(r) == "table" and r.CreateWindow then
             WindUI = r
@@ -123,12 +123,320 @@ end)
 
 local Tabs = {}
 local toggleRefs = {}
+local sliderRefs = {}
 
 local MainSection = Window:Section({ Title = "VIP 功能", Opened = true })
 Tabs.GeneralTab = MainSection:Tab({ Title = "通用", Icon = "star", ShowTabTitle = true })
 Tabs.WeirdBatTab = MainSection:Tab({ Title = "古怪的球棒", Icon = "star", ShowTabTitle = true })
 Tabs.NukeTab = MainSection:Tab({ Title = "合成核弹", Icon = "star", ShowTabTitle = true })
 Tabs.AssassinTab = MainSection:Tab({ Title = "沉默的刺客", Icon = "star", ShowTabTitle = true })
+
+-- 电脑端快捷键功能函数
+local function toggleSpeed(state)
+    speedEnabled = state
+    local char = LocalPlayer.Character
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        if state then originalWalkSpeed = humanoid.WalkSpeed; humanoid.WalkSpeed = speedValue
+        else humanoid.WalkSpeed = originalWalkSpeed end
+    end
+end
+
+local function toggleJump(state)
+    jumpEnabled = state
+    local char = LocalPlayer.Character
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        if state then originalJumpPower = humanoid.JumpPower; humanoid.JumpPower = jumpValue
+        else humanoid.JumpPower = originalJumpPower end
+    end
+end
+
+local function toggleSpin(state)
+    spinEnabled = state
+    if state then
+        spinConnection = RunService.RenderStepped:Connect(function(deltaTime)
+            if not spinEnabled then return end
+            local char = LocalPlayer.Character
+            if char then
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if humanoid and root then
+                    humanoid.AutoRotate = false
+                    root.CFrame = CFrame.new(root.Position) * (root.CFrame - root.Position) * CFrame.Angles(0, math.rad(spinSpeed) * deltaTime, 0)
+                end
+            end
+        end)
+    else
+        if spinConnection then spinConnection:Disconnect(); spinConnection = nil end
+        local char = LocalPlayer.Character
+        if char then
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid then humanoid.AutoRotate = true end
+        end
+    end
+end
+
+local function toggleNightVision(state)
+    nightVisionEnabled = state
+    if state then
+        nightVisionThread = task.spawn(function()
+            while nightVisionEnabled do
+                Lighting.Ambient = Color3.fromRGB(200, 200, 200)
+                Lighting.OutdoorAmbient = Color3.fromRGB(200, 200, 200)
+                Lighting.FogEnd = 10000; Lighting.Brightness = 3
+                task.wait(0.5)
+            end
+        end)
+    else
+        if nightVisionThread then task.cancel(nightVisionThread); nightVisionThread = nil end
+        Lighting.Ambient = originalAmbient; Lighting.OutdoorAmbient = originalOutdoorAmbient
+        Lighting.FogEnd = originalFogEnd; Lighting.Brightness = originalBrightness
+    end
+end
+
+local function toggleAttract(s)
+    attractEnabled = s
+    if s then
+        attractThread = task.spawn(function()
+            while attractEnabled do
+                local myChar = LocalPlayer.Character
+                if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+                    local myPos = myChar.HumanoidRootPart.Position
+                    local closest = nil; local minDist = math.huge
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer and p.Character then
+                            local enemyRoot = p.Character:FindFirstChild("HumanoidRootPart")
+                            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                            local ff = p.Character:FindFirstChildOfClass("ForceField")
+                            if enemyRoot and hum and hum.Health > 0 and not ff then
+                                local dist = (enemyRoot.Position - myPos).Magnitude
+                                if dist < minDist then minDist = dist; closest = enemyRoot end
+                            end
+                        end
+                    end
+                    if closest then myChar.HumanoidRootPart.CFrame = closest.CFrame
+                    else myChar.HumanoidRootPart.CFrame = CFrame.new(78,179,-3) end
+                end
+                task.wait(0.1)
+            end
+        end)
+    else
+        if attractThread then task.cancel(attractThread); attractThread = nil end
+    end
+end
+
+local function toggleLoopTeleport(state)
+    loopTeleportEnabled = state
+    if state then
+        loopTeleportThread = task.spawn(function()
+            while loopTeleportEnabled do
+                for i = 1, 3 do
+                    if not loopTeleportEnabled then break end
+                    local pos = markPositions[i]
+                    if pos ~= Vector3.zero then
+                        local char = LocalPlayer.Character
+                        if char and char:FindFirstChild("HumanoidRootPart") then
+                            char.HumanoidRootPart.CFrame = CFrame.new(pos)
+                        end
+                        task.wait(0.05)
+                    end
+                end
+                task.wait(0.05)
+            end
+        end)
+    else
+        if loopTeleportThread then task.cancel(loopTeleportThread); loopTeleportThread = nil end
+    end
+end
+
+local function setAutoAttack(s)
+    autoAttackEnabled = s
+    if s then
+        autoAttackThread = task.spawn(function()
+            while autoAttackEnabled do
+                local char = LocalPlayer.Character
+                if char then
+                    local tool = char:FindFirstChild("Gaia") or LocalPlayer.Backpack:FindFirstChild("Gaia")
+                    if tool then
+                        local root = char:FindFirstChild("HumanoidRootPart")
+                        if root then
+                            local myPos = root.Position; local closestEnemy = nil; local closestDist = 9990
+                            for _, p in ipairs(Players:GetPlayers()) do
+                                if p ~= LocalPlayer and p.Character then
+                                    local enemyRoot = p.Character:FindFirstChild("HumanoidRootPart")
+                                    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                                    local ff = p.Character:FindFirstChildOfClass("ForceField")
+                                    if enemyRoot and hum and hum.Health > 0 and not ff then
+                                        local dist = (enemyRoot.Position - myPos).Magnitude
+                                        if dist < closestDist then
+                                            closestDist = dist
+                                            closestEnemy = { model = p.Character, root = enemyRoot, dist = dist }
+                                        end
+                                    end
+                                end
+                            end
+                            if closestEnemy then
+                                local dir = (closestEnemy.root.Position - myPos).Unit
+                                local args = {
+                                    "AttemptWeaponHit",
+                                    {
+                                        attackCycleData = { lungeMult = 1, slowMult = 0.2, attackTime = 0.65, knockbackMult = 1, slowTime = 1.5 },
+                                        knockback = 50, shouldLock = true, shouldLunge = true,
+                                        hitboxOffset = Vector3.new(0,0,-1.5), isCritical = false, shouldSlow = true,
+                                        attackCooldown = 0.1, damage = 100, lungeKnockback = 55, cycleIndex = 2, slowMult = 0.2,
+                                        hitboxSize = Vector3.new(9,14,8),
+                                        weaponDefinition = {
+                                            attackCycle = {
+                                                ["1"] = { knockbackMul = 1, slowMult = 0.2, attackTime = 0.65, lungeMul = 1, slowTime = 1.5 },
+                                                ["2"] = { lungeMult = 1, slowMult = 0.2, attackTime = 0.65, knockbackMult = 1, slowTime = 1.5 },
+                                                ["3"] = { lungeMult = 0.75, slowMult = 0.2, attackTime = 0.7166666666666667, knockbackMult = 1.5, slowTime = 1.5 },
+                                                ["4"] = { lungeMult = 2.25, attackTime = 0.9833333333333333, slowMult = 0.2, hitboxOffsetAdd = Vector3.new(0,0,-1.5), hitboxSizeAdd = Vector3.new(0,0,3), knockbackMult = 2.25, slowTime = 1.5 }
+                                            },
+                                            attackOrder = { "1", "2", "3", "4" }
+                                        },
+                                        tool = tool, slowTime = 1.5
+                                    },
+                                    { { knockback = 50, isClosestEnemy = true, origin = closestEnemy.root.Position, enemyModel = closestEnemy.model, distance = closestEnemy.dist, direction = dir } }
+                                }
+                                pcall(function() ReplicatedStorage:WaitForChild("Events"):WaitForChild("GameRemoteFunction"):InvokeServer(unpack(args)) end)
+                            end
+                        end
+                    end
+                end
+                task.wait(0.01)
+            end
+        end)
+    else
+        if autoAttackThread then task.cancel(autoAttackThread); autoAttackThread = nil end
+    end
+end
+
+local function setAutoMerge(state)
+    autoMergeEnabled = state
+    if state then
+        autoMergeThread = task.spawn(function()
+            while autoMergeEnabled do
+                local success, err = pcall(function()
+                    local char = LocalPlayer.Character
+                    if not char then return end
+                    local root = char:FindFirstChild("HumanoidRootPart")
+                    if not root then return end
+
+                    local nukeA, nukeB = getMergeablePair()
+                    if not nukeA or not nukeB then task.wait(0.5) return end
+
+                    if char:FindFirstChildOfClass("Tool") then
+                        pcall(function()
+                            ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("Drop"):FireServer(root.CFrame)
+                        end)
+                        task.wait(0.3)
+                    end
+
+                    root.CFrame = CFrame.new(nukeA:GetPivot().Position + Vector3.new(0, 2.5, 0))
+                    task.wait(0.15)
+                    pcall(function() ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("PickUp"):FireServer(nukeA) end)
+                    task.wait(0.35)
+
+                    root.CFrame = CFrame.new(nukeB:GetPivot().Position + Vector3.new(0, 2.5, 0))
+                    task.wait(0.15)
+                    pcall(function() ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Remotes"):WaitForChild("Networking"):WaitForChild("RE/Merge/MergeRequest"):FireServer(nukeB) end)
+                    task.wait(0.5)
+
+                    if root and root.Parent then
+                        pcall(function() ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("Drop"):FireServer(root.CFrame) end)
+                        task.wait(0.2)
+                    end
+
+                    if root and root.Parent then
+                        local cur = root.Position
+                        root.CFrame = CFrame.new(cur.X, 50, cur.Z)
+                    end
+                    task.wait(0.3)
+                end)
+                if not success then warn("[自动合成] 错误: " .. tostring(err)) end
+                task.wait(0.2)
+            end
+        end)
+    else
+        if autoMergeThread then task.cancel(autoMergeThread); autoMergeThread = nil end
+    end
+end
+
+local function setAutoShield(state)
+    autoShieldEnabled = state
+    if state then
+        connectCooldownEvent()
+        autoShieldThread = task.spawn(function()
+            while autoShieldEnabled do
+                local now = safeServerTime()
+                if now >= shieldCooldownUntil then
+                    safeFireServer({"NukeRemotes", "RequestLockBase"})
+                    task.wait(8)
+                else
+                    task.wait(math.max(0, shieldCooldownUntil - now + 0.2))
+                end
+            end
+        end)
+    else
+        if autoShieldThread then task.cancel(autoShieldThread); autoShieldThread = nil end
+    end
+end
+
+local function setAutoUpgradeAll(state)
+    autoUpgradeAllEnabled = state
+    if state then
+        autoUpgradeAllThread = task.spawn(function()
+            while autoUpgradeAllEnabled do
+                tryPurchaseUpgrade("TIER") task.wait(0.2)
+                tryPurchaseUpgrade("MAX") task.wait(0.2)
+                tryPurchaseUpgrade("LOCKBASE") task.wait(30)
+            end
+        end)
+    else
+        if autoUpgradeAllThread then task.cancel(autoUpgradeAllThread); autoUpgradeAllThread = nil end
+    end
+end
+
+local function setAssassin(s)
+    assassinEnabled = s
+    if s then
+        assassinThread = task.spawn(function()
+            while assassinEnabled do
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer and p.Character then
+                        for _, part in ipairs(p.Character:GetDescendants()) do
+                            if part:IsA("BasePart") then part.Transparency = 0 end
+                        end
+                    end
+                end
+                task.wait(0.1)
+            end
+        end)
+    else
+        if assassinThread then task.cancel(assassinThread); assassinThread = nil end
+    end
+end
+
+local function setGacha(s)
+    gachaEnabled = s
+    if s then
+        gachaThread = task.spawn(function()
+            while gachaEnabled do
+                pcall(function()
+                    local remote = ReplicatedStorage:FindFirstChild("Events")
+                    if remote then remote = remote:FindFirstChild("GameRemoteFunction") end
+                    if remote then remote:InvokeServer("AttemptRollGachaChest", "Divine") end
+                end)
+                task.wait(0.5)
+            end
+        end)
+    else
+        if gachaThread then task.cancel(gachaThread); gachaThread = nil end
+    end
+end
 
 local originalAmbient = Lighting.Ambient
 local originalOutdoorAmbient = Lighting.OutdoorAmbient
@@ -221,19 +529,10 @@ local speedValue = 50
 
 toggleRefs.speed = Tabs.GeneralTab:Toggle({
     Title = "加速", Value = false,
-    Callback = function(state)
-        speedEnabled = state
-        local char = LocalPlayer.Character
-        if not char then return end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            if state then originalWalkSpeed = humanoid.WalkSpeed; humanoid.WalkSpeed = speedValue
-            else humanoid.WalkSpeed = originalWalkSpeed end
-        end
-    end
+    Callback = toggleSpeed
 })
 
-Tabs.GeneralTab:Slider({
+sliderRefs.speed = Tabs.GeneralTab:Slider({
     Title = "速度调节", Value = { Min = 16, Max = 2000, Default = 50 },
     Callback = function(value)
         speedValue = value
@@ -264,19 +563,10 @@ local jumpValue = 100
 
 toggleRefs.jump = Tabs.GeneralTab:Toggle({
     Title = "高跳", Value = false,
-    Callback = function(state)
-        jumpEnabled = state
-        local char = LocalPlayer.Character
-        if not char then return end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            if state then originalJumpPower = humanoid.JumpPower; humanoid.JumpPower = jumpValue
-            else humanoid.JumpPower = originalJumpPower end
-        end
-    end
+    Callback = toggleJump
 })
 
-Tabs.GeneralTab:Slider({
+sliderRefs.jump = Tabs.GeneralTab:Slider({
     Title = "跳跃高度调节", Value = { Min = 50, Max = 2000, Default = 100 },
     Callback = function(value)
         jumpValue = value
@@ -305,33 +595,10 @@ local spinEnabled = false; local spinConnection = nil; local spinSpeed = 100
 
 toggleRefs.spin = Tabs.GeneralTab:Toggle({
     Title = "马可波罗", Desc = "baby，你晕了吗", Value = false,
-    Callback = function(state)
-        spinEnabled = state
-        if state then
-            spinConnection = RunService.RenderStepped:Connect(function(deltaTime)
-                if not spinEnabled then return end
-                local char = LocalPlayer.Character
-                if char then
-                    local humanoid = char:FindFirstChildOfClass("Humanoid")
-                    local root = char:FindFirstChild("HumanoidRootPart")
-                    if humanoid and root then
-                        humanoid.AutoRotate = false
-                        root.CFrame = CFrame.new(root.Position) * (root.CFrame - root.Position) * CFrame.Angles(0, math.rad(spinSpeed) * deltaTime, 0)
-                    end
-                end
-            end)
-        else
-            if spinConnection then spinConnection:Disconnect(); spinConnection = nil end
-            local char = LocalPlayer.Character
-            if char then
-                local humanoid = char:FindFirstChildOfClass("Humanoid")
-                if humanoid then humanoid.AutoRotate = true end
-            end
-        end
-    end
+    Callback = toggleSpin
 })
 
-Tabs.GeneralTab:Slider({
+sliderRefs.spin = Tabs.GeneralTab:Slider({
     Title = "旋转速度", Desc = "度/秒", Value = { Min = 10, Max = 10000, Default = 100 },
     Callback = function(value) spinSpeed = value end
 })
@@ -341,23 +608,7 @@ local nightVisionEnabled = false; local nightVisionThread = nil
 
 toggleRefs.nightVision = Tabs.GeneralTab:Toggle({
     Title = "夜视", Desc = "提亮画面，看清黑暗区域", Value = false,
-    Callback = function(state)
-        nightVisionEnabled = state
-        if state then
-            nightVisionThread = task.spawn(function()
-                while nightVisionEnabled do
-                    Lighting.Ambient = Color3.fromRGB(200, 200, 200)
-                    Lighting.OutdoorAmbient = Color3.fromRGB(200, 200, 200)
-                    Lighting.FogEnd = 10000; Lighting.Brightness = 3
-                    task.wait(0.5)
-                end
-            end)
-        else
-            if nightVisionThread then task.cancel(nightVisionThread); nightVisionThread = nil end
-            Lighting.Ambient = originalAmbient; Lighting.OutdoorAmbient = originalOutdoorAmbient
-            Lighting.FogEnd = originalFogEnd; Lighting.Brightness = originalBrightness
-        end
-    end
+    Callback = toggleNightVision
 })
 
 -- 吸人
@@ -365,36 +616,7 @@ local attractEnabled = false; local attractThread = nil
 
 toggleRefs.attract = Tabs.GeneralTab:Toggle({
     Title = "吸人", Desc = "自动传送到最近的玩家附近", Value = false,
-    Callback = function(s)
-        attractEnabled = s
-        if s then
-            attractThread = task.spawn(function()
-                while attractEnabled do
-                    local myChar = LocalPlayer.Character
-                    if myChar and myChar:FindFirstChild("HumanoidRootPart") then
-                        local myPos = myChar.HumanoidRootPart.Position
-                        local closest = nil; local minDist = math.huge
-                        for _, p in ipairs(Players:GetPlayers()) do
-                            if p ~= LocalPlayer and p.Character then
-                                local enemyRoot = p.Character:FindFirstChild("HumanoidRootPart")
-                                local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                                local ff = p.Character:FindFirstChildOfClass("ForceField")
-                                if enemyRoot and hum and hum.Health > 0 and not ff then
-                                    local dist = (enemyRoot.Position - myPos).Magnitude
-                                    if dist < minDist then minDist = dist; closest = enemyRoot end
-                                end
-                            end
-                        end
-                        if closest then myChar.HumanoidRootPart.CFrame = closest.CFrame
-                        else myChar.HumanoidRootPart.CFrame = CFrame.new(78,179,-3) end
-                    end
-                    task.wait(0.1)
-                end
-            end)
-        else
-            if attractThread then task.cancel(attractThread); attractThread = nil end
-        end
-    end
+    Callback = toggleAttract
 })
 
 -- 视角相机区域（默认折叠）
@@ -506,7 +728,7 @@ toggleRefs.freeCam = CameraSection:Toggle({
     end
 })
 
-CameraSection:Slider({
+sliderRefs.freeCam = CameraSection:Slider({
     Title = "自由视角速度",
     Value = { Min = 10, Max = 200, Default = 50 },
     Callback = function(value) freeCamSpeed = value end
@@ -583,27 +805,7 @@ MarkSection:Button({ Title = "清除标记点3", Callback = function() removeMar
 local loopTeleportEnabled = false; local loopTeleportThread = nil
 toggleRefs.loopTeleport = MarkSection:Toggle({
     Title = "循环传送", Value = false,
-    Callback = function(state)
-        loopTeleportEnabled = state
-        if state then
-            loopTeleportThread = task.spawn(function()
-                while loopTeleportEnabled do
-                    for i = 1, 3 do
-                        if not loopTeleportEnabled then break end
-                        local pos = markPositions[i]
-                        if pos ~= Vector3.zero then
-                            local char = LocalPlayer.Character
-                            if char and char:FindFirstChild("HumanoidRootPart") then
-                                char.HumanoidRootPart.CFrame = CFrame.new(pos)
-                            end
-                            task.wait(0.05)
-                        end
-                    end
-                    task.wait(0.05)
-                end
-            end)
-        else if loopTeleportThread then task.cancel(loopTeleportThread); loopTeleportThread = nil end end
-    end
+    Callback = toggleLoopTeleport
 })
 
 -- 坐标传送
@@ -968,54 +1170,7 @@ local autoMergeThread = nil
 
 toggleRefs.autoMerge = Tabs.NukeTab:Toggle({
     Title = "自动合成", Desc = "同等级合成后立即丢弃，并传送到Y=50高空", Value = false,
-    Callback = function(state)
-        autoMergeEnabled = state
-        if state then
-            autoMergeThread = task.spawn(function()
-                while autoMergeEnabled do
-                    local success, err = pcall(function()
-                        local char = LocalPlayer.Character
-                        if not char then return end
-                        local root = char:FindFirstChild("HumanoidRootPart")
-                        if not root then return end
-
-                        local nukeA, nukeB = getMergeablePair()
-                        if not nukeA or not nukeB then task.wait(0.5) return end
-
-                        if char:FindFirstChildOfClass("Tool") then
-                            pcall(function()
-                                ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("Drop"):FireServer(root.CFrame)
-                            end)
-                            task.wait(0.3)
-                        end
-
-                        root.CFrame = CFrame.new(nukeA:GetPivot().Position + Vector3.new(0, 2.5, 0))
-                        task.wait(0.15)
-                        pcall(function() ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("PickUp"):FireServer(nukeA) end)
-                        task.wait(0.35)
-
-                        root.CFrame = CFrame.new(nukeB:GetPivot().Position + Vector3.new(0, 2.5, 0))
-                        task.wait(0.15)
-                        pcall(function() ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Remotes"):WaitForChild("Networking"):WaitForChild("RE/Merge/MergeRequest"):FireServer(nukeB) end)
-                        task.wait(0.5)
-
-                        if root and root.Parent then
-                            pcall(function() ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("Drop"):FireServer(root.CFrame) end)
-                            task.wait(0.2)
-                        end
-
-                        if root and root.Parent then
-                            local cur = root.Position
-                            root.CFrame = CFrame.new(cur.X, 50, cur.Z)
-                        end
-                        task.wait(0.3)
-                    end)
-                    if not success then warn("[自动合成] 错误: " .. tostring(err)) end
-                    task.wait(0.2)
-                end
-            end)
-        else if autoMergeThread then task.cancel(autoMergeThread); autoMergeThread = nil end end
-    end
+    Callback = setAutoMerge
 })
 
 local autoShieldEnabled = false
@@ -1039,23 +1194,7 @@ end
 
 toggleRefs.autoShield = Tabs.NukeTab:Toggle({
     Title = "自动防护罩", Desc = "冷却结束自动开罩", Value = false,
-    Callback = function(state)
-        autoShieldEnabled = state
-        if state then
-            connectCooldownEvent()
-            autoShieldThread = task.spawn(function()
-                while autoShieldEnabled do
-                    local now = safeServerTime()
-                    if now >= shieldCooldownUntil then
-                        safeFireServer({"NukeRemotes", "RequestLockBase"})
-                        task.wait(8)
-                    else
-                        task.wait(math.max(0, shieldCooldownUntil - now + 0.2))
-                    end
-                end
-            end)
-        else if autoShieldThread then task.cancel(autoShieldThread); autoShieldThread = nil end end
-    end
+    Callback = setAutoShield
 })
 
 local function tryPurchaseUpgrade(upgradeType)
@@ -1067,125 +1206,26 @@ local autoUpgradeAllThread = nil
 
 toggleRefs.autoUpgradeAll = Tabs.NukeTab:Toggle({
     Title = "自动升级（全部）", Desc = "每30秒购买全部升级", Value = false,
-    Callback = function(state)
-        autoUpgradeAllEnabled = state
-        if state then
-            autoUpgradeAllThread = task.spawn(function()
-                while autoUpgradeAllEnabled do
-                    tryPurchaseUpgrade("TIER") task.wait(0.2)
-                    tryPurchaseUpgrade("MAX") task.wait(0.2)
-                    tryPurchaseUpgrade("LOCKBASE") task.wait(30)
-                end
-            end)
-        else if autoUpgradeAllThread then task.cancel(autoUpgradeAllThread); autoUpgradeAllThread = nil end end
-    end
+    Callback = setAutoUpgradeAll
 })
 
 -- 沉默的刺客
 local assassinEnabled = false; local assassinThread = nil
 toggleRefs.assassin = Tabs.AssassinTab:Toggle({
     Title = "强制显示模型", Value = false,
-    Callback = function(s)
-        assassinEnabled = s
-        if s then
-            assassinThread = task.spawn(function()
-                while assassinEnabled do
-                    for _, p in ipairs(Players:GetPlayers()) do
-                        if p ~= LocalPlayer and p.Character then
-                            for _, part in ipairs(p.Character:GetDescendants()) do
-                                if part:IsA("BasePart") then part.Transparency = 0 end
-                            end
-                        end
-                    end
-                    task.wait(0.1)
-                end
-            end)
-        else if assassinThread then task.cancel(assassinThread); assassinThread = nil end end
-    end
+    Callback = setAssassin
 })
 
 local autoAttackEnabled = false; local autoAttackThread = nil
 toggleRefs.autoAttack = Tabs.AssassinTab:Toggle({
     Title = "自动秒杀全图", Desc = "全图自动挥刀击杀", Value = false,
-    Callback = function(s)
-        autoAttackEnabled = s
-        if s then
-            autoAttackThread = task.spawn(function()
-                while autoAttackEnabled do
-                    local char = LocalPlayer.Character
-                    if char then
-                        local tool = char:FindFirstChild("Gaia") or LocalPlayer.Backpack:FindFirstChild("Gaia")
-                        if tool then
-                            local root = char:FindFirstChild("HumanoidRootPart")
-                            if root then
-                                local myPos = root.Position; local closestEnemy = nil; local closestDist = 9990
-                                for _, p in ipairs(Players:GetPlayers()) do
-                                    if p ~= LocalPlayer and p.Character then
-                                        local enemyRoot = p.Character:FindFirstChild("HumanoidRootPart")
-                                        local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                                        local ff = p.Character:FindFirstChildOfClass("ForceField")
-                                        if enemyRoot and hum and hum.Health > 0 and not ff then
-                                            local dist = (enemyRoot.Position - myPos).Magnitude
-                                            if dist < closestDist then
-                                                closestDist = dist
-                                                closestEnemy = { model = p.Character, root = enemyRoot, dist = dist }
-                                            end
-                                        end
-                                    end
-                                end
-                                if closestEnemy then
-                                    local dir = (closestEnemy.root.Position - myPos).Unit
-                                    local args = {
-                                        "AttemptWeaponHit",
-                                        {
-                                            attackCycleData = { lungeMult = 1, slowMult = 0.2, attackTime = 0.65, knockbackMult = 1, slowTime = 1.5 },
-                                            knockback = 50, shouldLock = true, shouldLunge = true,
-                                            hitboxOffset = Vector3.new(0,0,-1.5), isCritical = false, shouldSlow = true,
-                                            attackCooldown = 0.1, damage = 100, lungeKnockback = 55, cycleIndex = 2, slowMult = 0.2,
-                                            hitboxSize = Vector3.new(9,14,8),
-                                            weaponDefinition = {
-                                                attackCycle = {
-                                                    ["1"] = { knockbackMul = 1, slowMult = 0.2, attackTime = 0.65, lungeMul = 1, slowTime = 1.5 },
-                                                    ["2"] = { lungeMult = 1, slowMult = 0.2, attackTime = 0.65, knockbackMult = 1, slowTime = 1.5 },
-                                                    ["3"] = { lungeMult = 0.75, slowMult = 0.2, attackTime = 0.7166666666666667, knockbackMult = 1.5, slowTime = 1.5 },
-                                                    ["4"] = { lungeMult = 2.25, attackTime = 0.9833333333333333, slowMult = 0.2, hitboxOffsetAdd = Vector3.new(0,0,-1.5), hitboxSizeAdd = Vector3.new(0,0,3), knockbackMult = 2.25, slowTime = 1.5 }
-                                                },
-                                                attackOrder = { "1", "2", "3", "4" }
-                                            },
-                                            tool = tool, slowTime = 1.5
-                                        },
-                                        { { knockback = 50, isClosestEnemy = true, origin = closestEnemy.root.Position, enemyModel = closestEnemy.model, distance = closestEnemy.dist, direction = dir } }
-                                    }
-                                    pcall(function() ReplicatedStorage:WaitForChild("Events"):WaitForChild("GameRemoteFunction"):InvokeServer(unpack(args)) end)
-                                end
-                            end
-                        end
-                    end
-                    task.wait(0.01)
-                end
-            end)
-        else if autoAttackThread then task.cancel(autoAttackThread); autoAttackThread = nil end end
-    end
+    Callback = setAutoAttack
 })
 
 local gachaEnabled = false; local gachaThread = nil
 toggleRefs.gacha = Tabs.AssassinTab:Toggle({
     Title = "自动开箱(神圣)", Value = false,
-    Callback = function(s)
-        gachaEnabled = s
-        if s then
-            gachaThread = task.spawn(function()
-                while gachaEnabled do
-                    pcall(function()
-                        local remote = ReplicatedStorage:FindFirstChild("Events")
-                        if remote then remote = remote:FindFirstChild("GameRemoteFunction") end
-                        if remote then remote:InvokeServer("AttemptRollGachaChest", "Divine") end
-                    end)
-                    task.wait(0.5)
-                end
-            end)
-        else if gachaThread then task.cancel(gachaThread); gachaThread = nil end end
-    end
+    Callback = setGacha
 })
 
 Window:OnClose(function()
@@ -1200,4 +1240,243 @@ Window:OnClose(function()
 end)
 
 Window:SelectTab(1)
-WindUI:Notify({ Title = "VIP 脚本", Content = "加载成功！", Duration = 2 })
+
+-- 电脑端适配系统
+local shiftBoostEnabled = false
+local shiftOriginalSpeed = 16
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+        if not speedEnabled then
+            shiftBoostEnabled = true
+            local char = LocalPlayer.Character
+            if char then
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    shiftOriginalSpeed = humanoid.WalkSpeed
+                    humanoid.WalkSpeed = speedValue
+                end
+            end
+        end
+        return
+    end
+
+    local key = input.KeyCode
+    local handled = false
+    local notifyTitle = "快捷键"
+    local notifyContent = ""
+
+    if key == Enum.KeyCode.F1 then
+        local newState = not espEnabled
+        espEnabled = newState
+        toggleESP(newState)
+        pcall(function() toggleRefs.esp:SetValue(newState) end)
+        notifyContent = "透视: " .. (newState and "开启" or "关闭")
+        handled = true
+    elseif key == Enum.KeyCode.F2 then
+        local newState = not speedEnabled
+        speedEnabled = newState
+        toggleSpeed(newState)
+        pcall(function() toggleRefs.speed:SetValue(newState) end)
+        notifyContent = "加速: " .. (newState and "开启" or "关闭")
+        handled = true
+    elseif key == Enum.KeyCode.F3 then
+        local newState = not jumpEnabled
+        jumpEnabled = newState
+        toggleJump(newState)
+        pcall(function() toggleRefs.jump:SetValue(newState) end)
+        notifyContent = "高跳: " .. (newState and "开启" or "关闭")
+        handled = true
+    elseif key == Enum.KeyCode.F4 then
+        local newState = not attractEnabled
+        attractEnabled = newState
+        toggleAttract(newState)
+        pcall(function() toggleRefs.attract:SetValue(newState) end)
+        notifyContent = "吸人: " .. (newState and "开启" or "关闭")
+        handled = true
+    elseif key == Enum.KeyCode.F5 then
+        local newState = not nightVisionEnabled
+        nightVisionEnabled = newState
+        toggleNightVision(newState)
+        pcall(function() toggleRefs.nightVision:SetValue(newState) end)
+        notifyContent = "夜视: " .. (newState and "开启" or "关闭")
+        handled = true
+    elseif key == Enum.KeyCode.F6 then
+        if not freeCamEnabled then
+            enableFreeCam()
+            pcall(function() toggleRefs.freeCam:SetValue(true) end)
+            notifyContent = "自由相机: 开启"
+        else
+            disableFreeCam()
+            pcall(function() toggleRefs.freeCam:SetValue(false) end)
+            notifyContent = "自由相机: 关闭"
+        end
+        handled = true
+    elseif key == Enum.KeyCode.F7 then
+        if not fixedCamEnabled then
+            enableFixedCam()
+            pcall(function() toggleRefs.fixedCam:SetValue(true) end)
+            notifyContent = "固定相机: 开启"
+        else
+            disableFixedCam()
+            pcall(function() toggleRefs.fixedCam:SetValue(false) end)
+            notifyContent = "固定相机: 关闭"
+        end
+        handled = true
+    elseif key == Enum.KeyCode.F8 then
+        local newState = not loopTeleportEnabled
+        loopTeleportEnabled = newState
+        toggleLoopTeleport(newState)
+        pcall(function() toggleRefs.loopTeleport:SetValue(newState) end)
+        notifyContent = "循环传送: " .. (newState and "开启" or "关闭")
+        handled = true
+    elseif key == Enum.KeyCode.F9 then
+        for _, t in pairs(toggleRefs) do pcall(function() t:SetValue(false) end) end
+        toggleESP(false)
+        if spinConnection then spinConnection:Disconnect(); spinConnection = nil end
+        restoreDefaultCamera()
+        Lighting.Ambient = originalAmbient; Lighting.OutdoorAmbient = originalOutdoorAmbient
+        Lighting.FogEnd = originalFogEnd; Lighting.Brightness = originalBrightness
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.AutoRotate = true; hum.WalkSpeed = 16; hum.JumpPower = 50 end
+        end
+        speedEnabled = false; jumpEnabled = false
+        notifyContent = "一键关闭所有功能"
+        handled = true
+    elseif key == Enum.KeyCode.F10 then
+        local newState = not autoAttackEnabled
+        autoAttackEnabled = newState
+        setAutoAttack(newState)
+        pcall(function() toggleRefs.autoAttack:SetValue(newState) end)
+        notifyContent = "自动秒杀全图: " .. (newState and "开启" or "关闭")
+        handled = true
+    elseif key == Enum.KeyCode.F11 then
+        local newState = not autoMergeEnabled
+        autoMergeEnabled = newState
+        setAutoMerge(newState)
+        pcall(function() toggleRefs.autoMerge:SetValue(newState) end)
+        notifyContent = "自动合成: " .. (newState and "开启" or "关闭")
+        handled = true
+    elseif key == Enum.KeyCode.F12 then
+        local newState = not autoShieldEnabled
+        autoShieldEnabled = newState
+        setAutoShield(newState)
+        pcall(function() toggleRefs.autoShield:SetValue(newState) end)
+        notifyContent = "自动防护罩: " .. (newState and "开启" or "关闭")
+        handled = true
+    elseif key == Enum.KeyCode.One then
+        local pos = markPositions[1]
+        if pos ~= Vector3.zero then
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                char.HumanoidRootPart.CFrame = CFrame.new(pos)
+                notifyContent = "传送到标记点1"
+                handled = true
+            end
+        else
+            notifyContent = "标记点1未设置"
+            handled = true
+        end
+    elseif key == Enum.KeyCode.Two then
+        local pos = markPositions[2]
+        if pos ~= Vector3.zero then
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                char.HumanoidRootPart.CFrame = CFrame.new(pos)
+                notifyContent = "传送到标记点2"
+                handled = true
+            end
+        else
+            notifyContent = "标记点2未设置"
+            handled = true
+        end
+    elseif key == Enum.KeyCode.Three then
+        local pos = markPositions[3]
+        if pos ~= Vector3.zero then
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                char.HumanoidRootPart.CFrame = CFrame.new(pos)
+                notifyContent = "传送到标记点3"
+                handled = true
+            end
+        else
+            notifyContent = "标记点3未设置"
+            handled = true
+        end
+    end
+
+    if handled then
+        pcall(function() WindUI:Notify({ Title = notifyTitle, Content = notifyContent, Duration = 1.5 }) end)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+        if shiftBoostEnabled then
+            shiftBoostEnabled = false
+            local char = LocalPlayer.Character
+            if char then
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.WalkSpeed = shiftOriginalSpeed
+                end
+            end
+        end
+    end
+end)
+
+-- 鼠标滚轮调速
+UserInputService.InputChanged:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.MouseWheel then
+        local delta = input.Position.Z
+        if delta ~= 0 then
+            speedValue = math.clamp(speedValue + delta * 10, 16, 2000)
+            if speedEnabled then
+                local char = LocalPlayer.Character
+                if char then
+                    local humanoid = char:FindFirstChildOfClass("Humanoid")
+                    if humanoid then humanoid.WalkSpeed = speedValue end
+                end
+            end
+            pcall(function()
+                if sliderRefs.speed and sliderRefs.speed.SetValue then
+                    sliderRefs.speed:SetValue(speedValue)
+                end
+            end)
+        end
+    end
+end)
+
+-- 快捷键提示
+pcall(function()
+    local gui = Window.Gui or Window.Window or Window.MainGui
+    if gui then
+        local keybindLabel = Instance.new("TextLabel")
+        keybindLabel.Name = "KeybindHint"
+        keybindLabel.Size = UDim2.new(0, 260, 0, 220)
+        keybindLabel.Position = UDim2.new(1, -270, 0, 10)
+        keybindLabel.BackgroundTransparency = 0.3
+        keybindLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        keybindLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        keybindLabel.TextSize = 11
+        keybindLabel.Font = Enum.Font.GothamBold
+        keybindLabel.TextXAlignment = Enum.TextXAlignment.Left
+        keybindLabel.TextYAlignment = Enum.TextYAlignment.Top
+        keybindLabel.Text = [[电脑端快捷键:
+F1 透视 | F2 加速 | F3 高跳
+F4 吸人 | F5 夜视 | F6 自由相机
+F7 固定相机 | F8 循环传送
+F9 一键关闭 | F10 自动秒杀
+F11 自动合成 | F12 自动防护罩
+1/2/3 标记点传送
+Shift 临时加速 | 滚轮 调速]]
+        keybindLabel.Parent = gui
+    end
+end)
+
+WindUI:Notify({ Title = "VIP 脚本", Content = "加载成功！电脑端快捷键已启用", Duration = 3 })
