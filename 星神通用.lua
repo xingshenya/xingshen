@@ -19,8 +19,7 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- 修复1：等待 PlayerGui 就绪，避免 GUI 容器缺失
-repeat task.wait(0.1) until LocalPlayer:FindFirstChild("PlayerGui")
+repeat task.wait() until LocalPlayer:FindFirstChild("PlayerGui")
 
 local WindUI
 local CACHE_FILE = "WindUI_Cache_v2.lua"
@@ -40,89 +39,43 @@ end
 
 if not WindUI then
     local sources = {
+        "https://raw.githubusercontent.com/Footagesus/WindUI/main/main.lua",
         "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
         "https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/main.lua",
     }
-
     local loaded = false
-    local results = {}
-
     for idx, url in ipairs(sources) do
-        task.spawn(function()
-            if loaded then return end
-            local ok, result = pcall(function()
-                local src = game:HttpGet(url, true)
-                if src and #src > 1000 then
-                    task.defer(function()
-                        pcall(function()
-                            if writefile then writefile(CACHE_FILE, src) end
-                        end)
-                    end)
-                end
-                return loadstring(src)()
-            end)
-            if ok and result and type(result.CreateWindow) == "function" then
-                results[idx] = result
-                loaded = true
-            else
-                results[idx] = false
-                warn("WindUI 源 " .. idx .. " 失败: " .. tostring(result))
+        local ok, result = pcall(function()
+            local src = game:HttpGet(url, true)
+            if src and #src > 1000 then
+                pcall(function() if writefile then writefile(CACHE_FILE, src) end end)
             end
+            return loadstring(src)()
         end)
-    end
-
-    local start = tick()
-    while not loaded and tick() - start < 6 do
-        task.wait(0.05)
-    end
-
-    for _, r in ipairs(results) do
-        if type(r) == "table" and r.CreateWindow then
-            WindUI = r
+        if ok and result and result.CreateWindow then
+            WindUI = result
+            loaded = true
             break
         end
     end
-end
-
-if not WindUI then
-    StarterGui:SetCore("SendNotification", {
-        Title = "加载失败",
-        Text = "WindUI 库无法加载，请检查网络或更换注入器",
-        Duration = 5
-    })
-    return
-end
-
--- 修复2：使用有效的图标ID并添加重试机制
-local Window
-local createErr
-for attempt = 1, 3 do
-    local ok, err = pcall(function()
-        Window = WindUI:CreateWindow({
-            Title = "VIP 脚本",
-            Icon = "rbxassetid://6031066502",  -- 稳定的 Roblox 图标ID
-            IconThemed = true,
-            Author = "VIP 功能",
-            Folder = "云中心",
-            Size = UDim2.fromOffset(580, 460),
-            Transparent = true,
-            Theme = "Dark",
-            User = { Enabled = true, Callback = function() end, Anonymous = true },
-            SideBarWidth = 200,
-            ScrollBarEnabled = true,
-            MinimizeButton = false,
-        })
-    end)
-    if ok and Window then
-        break
-    else
-        createErr = err
-        task.wait(0.5)
+    if not loaded then
+        StarterGui:SetCore("SendNotification", {Title = "加载失败", Text = "WindUI 库无法加载", Duration = 5})
+        return
     end
 end
 
+-- 精简创建参数（移除 User, Folder, SideBarWidth 等可能导致失败的项）
+local Window = WindUI:CreateWindow({
+    Title = "VIP 脚本",
+    Icon = "rbxassetid://6031066502",
+    IconThemed = true,
+    Author = "VIP 功能",
+    Size = UDim2.fromOffset(580, 460),
+    Transparent = true,
+    Theme = "Dark",
+})
 if not Window then
-    StarterGui:SetCore("SendNotification", { Title = "窗口创建失败", Text = "错误: " .. tostring(createErr), Duration = 5 })
+    StarterGui:SetCore("SendNotification", {Title = "窗口创建失败", Text = "请重试", Duration = 5})
     return
 end
 
@@ -144,9 +97,7 @@ Tabs.WeirdBatTab = MainSection:Tab({ Title = "古怪的球棒", Icon = "star", S
 Tabs.NukeTab = MainSection:Tab({ Title = "合成核弹", Icon = "star", ShowTabTitle = true })
 Tabs.AssassinTab = MainSection:Tab({ Title = "沉默的刺客", Icon = "star", ShowTabTitle = true })
 
--- ==================== 所有功能函数定义 ====================
-
--- 加速
+-- ================== 功能函数定义 ==================
 local speedEnabled = false
 local originalWalkSpeed = 16
 local speedValue = 50
@@ -162,7 +113,6 @@ local function toggleSpeed(state)
     end
 end
 
--- 高跳
 local jumpEnabled = false
 local originalJumpPower = 50
 local jumpValue = 100
@@ -178,7 +128,6 @@ local function toggleJump(state)
     end
 end
 
--- 马可波罗旋转
 local spinEnabled = false
 local spinConnection = nil
 local spinSpeed = 100
@@ -208,7 +157,6 @@ local function toggleSpin(state)
     end
 end
 
--- 夜视
 local nightVisionEnabled = false
 local nightVisionThread = nil
 local originalAmbient = Lighting.Ambient
@@ -237,7 +185,6 @@ local function toggleNightVision(state)
     end
 end
 
--- 吸人
 local attractEnabled = false
 local attractThread = nil
 
@@ -276,7 +223,6 @@ local function toggleAttract(state)
     end
 end
 
--- 标记点与循环传送
 local markObjects = {}
 local markPositions = { [1] = Vector3.zero, [2] = Vector3.zero, [3] = Vector3.zero }
 local loopTeleportEnabled = false
@@ -347,7 +293,6 @@ local function toggleLoopTeleport(state)
     end
 end
 
--- 透视
 local espEnabled = false
 local espConnections = {}
 local espObjects = {}
@@ -425,7 +370,6 @@ local function toggleESP(state)
     end
 end
 
--- 自由/固定相机
 local freeCamEnabled = false
 local fixedCamEnabled = false
 local freeCamRenderConn = nil
@@ -517,7 +461,6 @@ local function disableFixedCam()
     if not freeCamEnabled then restoreDefaultCamera() end
 end
 
--- 自动秒杀（Gaia 武器）
 local autoAttackEnabled = false
 local autoAttackThread = nil
 
@@ -587,7 +530,6 @@ local function setAutoAttack(state)
     end
 end
 
--- 合成核弹相关函数
 local function safeServerTime()
     local ok, t = pcall(function() return workspace:GetServerTimeNow() end)
     return (ok and type(t) == "number") and t or tick()
@@ -684,34 +626,28 @@ local function setAutoMerge(state)
                     if not char then return end
                     local root = char:FindFirstChild("HumanoidRootPart")
                     if not root then return end
-
                     local nukeA, nukeB = getMergeablePair()
                     if not nukeA or not nukeB then task.wait(0.5) return end
-
                     if char:FindFirstChildOfClass("Tool") then
                         pcall(function()
                             ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("Drop"):FireServer(root.CFrame)
                         end)
                         task.wait(0.3)
                     end
-
                     root.CFrame = CFrame.new(nukeA:GetPivot().Position + Vector3.new(0, 2.5, 0))
                     task.wait(0.15)
                     pcall(function() ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("PickUp"):FireServer(nukeA) end)
                     task.wait(0.35)
-
                     root.CFrame = CFrame.new(nukeB:GetPivot().Position + Vector3.new(0, 2.5, 0))
                     task.wait(0.15)
                     pcall(function()
                         ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Remotes"):WaitForChild("Networking"):WaitForChild("RE/Merge/MergeRequest"):FireServer(nukeB)
                     end)
                     task.wait(0.5)
-
                     if root and root.Parent then
                         pcall(function() ReplicatedStorage:WaitForChild("NukeRemotes"):WaitForChild("Drop"):FireServer(root.CFrame) end)
                         task.wait(0.2)
                     end
-
                     if root and root.Parent then
                         local cur = root.Position
                         root.CFrame = CFrame.new(cur.X, 50, cur.Z)
@@ -792,7 +728,6 @@ local function setAutoUpgradeAll(state)
     end
 end
 
--- 沉默的刺客
 local assassinEnabled = false
 local assassinThread = nil
 
@@ -837,12 +772,9 @@ local function setGacha(state)
     end
 end
 
--- ==================== UI 构建 ====================
-
--- 透视
+-- ================== UI 构建 ==================
 toggleRefs.esp = Tabs.GeneralTab:Toggle({ Title = "透视", Value = false, Callback = function(state) toggleESP(state) end })
 
--- 加速
 toggleRefs.speed = Tabs.GeneralTab:Toggle({ Title = "加速", Value = false, Callback = toggleSpeed })
 sliderRefs.speed = Tabs.GeneralTab:Slider({
     Title = "速度调节", Value = { Min = 16, Max = 2000, Default = 50 },
@@ -867,7 +799,6 @@ Tabs.GeneralTab:Button({
     end
 })
 
--- 高跳
 toggleRefs.jump = Tabs.GeneralTab:Toggle({ Title = "高跳", Value = false, Callback = toggleJump })
 sliderRefs.jump = Tabs.GeneralTab:Slider({
     Title = "跳跃高度调节", Value = { Min = 50, Max = 2000, Default = 100 },
@@ -892,20 +823,15 @@ Tabs.GeneralTab:Button({
     end
 })
 
--- 马可波罗
 toggleRefs.spin = Tabs.GeneralTab:Toggle({ Title = "马可波罗", Desc = "baby，你晕了吗", Value = false, Callback = toggleSpin })
 sliderRefs.spin = Tabs.GeneralTab:Slider({
     Title = "旋转速度", Desc = "度/秒", Value = { Min = 10, Max = 10000, Default = 100 },
     Callback = function(value) spinSpeed = value end
 })
 
--- 夜视
 toggleRefs.nightVision = Tabs.GeneralTab:Toggle({ Title = "夜视", Desc = "提亮画面，看清黑暗区域", Value = false, Callback = toggleNightVision })
-
--- 吸人
 toggleRefs.attract = Tabs.GeneralTab:Toggle({ Title = "吸人", Desc = "自动传送到最近的玩家附近", Value = false, Callback = toggleAttract })
 
--- 视角相机
 local CameraSection = Tabs.GeneralTab:Section({ Title = "视角相机", Opened = false })
 toggleRefs.freeCam = CameraSection:Toggle({
     Title = "自由移动相机视角", Desc = "WASD移动，QE升降，右键旋转视角", Value = false,
@@ -924,7 +850,6 @@ toggleRefs.fixedCam = CameraSection:Toggle({
     end
 })
 
--- 标记点与循环传送
 local MarkSection = Tabs.GeneralTab:Section({ Title = "标记点与循环传送", Opened = false })
 MarkSection:Button({ Title = "标记点1", Callback = function() setMark(1) end })
 MarkSection:Button({ Title = "清除标记点1", Callback = function() removeMark(1); markPositions[1] = Vector3.zero end })
@@ -934,7 +859,6 @@ MarkSection:Button({ Title = "标记点3", Callback = function() setMark(3) end 
 MarkSection:Button({ Title = "清除标记点3", Callback = function() removeMark(3); markPositions[3] = Vector3.zero end })
 toggleRefs.loopTeleport = MarkSection:Toggle({ Title = "循环传送", Value = false, Callback = toggleLoopTeleport })
 
--- 坐标传送
 local TeleSection = Tabs.GeneralTab:Section({ Title = "坐标传送", Opened = false })
 TeleSection:Button({
     Title = "复制当前坐标", Callback = function()
@@ -966,7 +890,6 @@ TeleSection:Button({
     end
 })
 
--- 一键关闭所有功能
 Tabs.GeneralTab:Button({
     Title = "一键关闭所有功能",
     Callback = function()
@@ -988,7 +911,7 @@ Tabs.GeneralTab:Button({
     end
 })
 
--- 古怪的球棒功能
+-- 古怪的球棒
 local chainKillEnabled = false
 local chainKillThread = nil
 toggleRefs.chainKill = Tabs.WeirdBatTab:Toggle({
@@ -1008,9 +931,7 @@ toggleRefs.chainKill = Tabs.WeirdBatTab:Toggle({
                     task.wait(0.01)
                 end
             end)
-        else
-            if chainKillThread then task.cancel(chainKillThread); chainKillThread = nil end
-        end
+        else if chainKillThread then task.cancel(chainKillThread); chainKillThread = nil end end
     end
 })
 
@@ -1033,9 +954,7 @@ toggleRefs.shotbatKill = Tabs.WeirdBatTab:Toggle({
                     task.wait(0.01)
                 end
             end)
-        else
-            if shotbatKillThread then task.cancel(shotbatKillThread); shotbatKillThread = nil end
-        end
+        else if shotbatKillThread then task.cancel(shotbatKillThread); shotbatKillThread = nil end end
     end
 })
 
@@ -1058,9 +977,7 @@ toggleRefs.tripbatKill = Tabs.WeirdBatTab:Toggle({
                     task.wait(0.01)
                 end
             end)
-        else
-            if tripbatKillThread then task.cancel(tripbatKillThread); tripbatKillThread = nil end
-        end
+        else if tripbatKillThread then task.cancel(tripbatKillThread); tripbatKillThread = nil end end
     end
 })
 
@@ -1089,9 +1006,7 @@ toggleRefs.gubby = Tabs.WeirdBatTab:Toggle({
                     task.wait(0.01)
                 end
             end)
-        else
-            if gubbyThread then task.cancel(gubbyThread); gubbyThread = nil end
-        end
+        else if gubbyThread then task.cancel(gubbyThread); gubbyThread = nil end end
     end
 })
 
@@ -1114,9 +1029,7 @@ toggleRefs.poisonKill = Tabs.WeirdBatTab:Toggle({
                     task.wait(0.01)
                 end
             end)
-        else
-            if poisonKillThread then task.cancel(poisonKillThread); poisonKillThread = nil end
-        end
+        else if poisonKillThread then task.cancel(poisonKillThread); poisonKillThread = nil end end
     end
 })
 
@@ -1139,9 +1052,7 @@ toggleRefs.aquaKill = Tabs.WeirdBatTab:Toggle({
                     task.wait(0.1)
                 end
             end)
-        else
-            if aquaKillThread then task.cancel(aquaKillThread); aquaKillThread = nil end
-        end
+        else if aquaKillThread then task.cancel(aquaKillThread); aquaKillThread = nil end end
     end
 })
 
@@ -1191,9 +1102,7 @@ toggleRefs.electroKill = Tabs.WeirdBatTab:Toggle({
                     task.wait(0.01)
                 end
             end)
-        else
-            if electroKillThread then task.cancel(electroKillThread); electroKillThread = nil end
-        end
+        else if electroKillThread then task.cancel(electroKillThread); electroKillThread = nil end end
     end
 })
 
@@ -1215,9 +1124,7 @@ toggleRefs.antiFall = Tabs.WeirdBatTab:Toggle({
                     task.wait(0.1)
                 end
             end)
-        else
-            if antiFallThread then task.cancel(antiFallThread); antiFallThread = nil end
-        end
+        else if antiFallThread then task.cancel(antiFallThread); antiFallThread = nil end end
     end
 })
 
@@ -1239,17 +1146,14 @@ Tabs.WeirdBatTab:Button({
     end
 })
 
--- 合成核弹 UI
 toggleRefs.autoMerge = Tabs.NukeTab:Toggle({ Title = "自动合成", Desc = "同等级合成后立即丢弃，并传送到Y=50高空", Value = false, Callback = setAutoMerge })
 toggleRefs.autoShield = Tabs.NukeTab:Toggle({ Title = "自动防护罩", Desc = "冷却结束自动开罩", Value = false, Callback = setAutoShield })
 toggleRefs.autoUpgradeAll = Tabs.NukeTab:Toggle({ Title = "自动升级（全部）", Desc = "每30秒购买全部升级", Value = false, Callback = setAutoUpgradeAll })
 
--- 沉默的刺客 UI
 toggleRefs.assassin = Tabs.AssassinTab:Toggle({ Title = "强制显示模型", Value = false, Callback = setAssassin })
 toggleRefs.autoAttack = Tabs.AssassinTab:Toggle({ Title = "自动秒杀全图", Desc = "全图自动挥刀击杀", Value = false, Callback = setAutoAttack })
 toggleRefs.gacha = Tabs.AssassinTab:Toggle({ Title = "自动开箱(神圣)", Value = false, Callback = setGacha })
 
--- 窗口关闭回调
 Window:OnClose(function()
     Lighting.Ambient = originalAmbient
     Lighting.OutdoorAmbient = originalOutdoorAmbient
@@ -1265,7 +1169,6 @@ end)
 
 Window:SelectTab(1)
 
--- 角色重生时恢复属性
 LocalPlayer.CharacterAdded:Connect(function(char)
     local function applyStats()
         local hum = char:FindFirstChildOfClass("Humanoid")
@@ -1285,13 +1188,12 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- ==================== 电脑端快捷键与额外适配 ====================
+-- 快捷键
 local shiftBoostEnabled = false
 local shiftOriginalSpeed = 16
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
-
     if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
         if not speedEnabled then
             shiftBoostEnabled = true
@@ -1306,12 +1208,10 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         end
         return
     end
-
     local key = input.KeyCode
     local handled = false
     local notifyTitle = "快捷键"
     local notifyContent = ""
-
     if key == Enum.KeyCode.F1 then
         local newState = not espEnabled
         espEnabled = newState
@@ -1423,10 +1323,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 notifyContent = "传送到标记点1"
                 handled = true
             end
-        else
-            notifyContent = "标记点1未设置"
-            handled = true
-        end
+        else notifyContent = "标记点1未设置"; handled = true end
     elseif key == Enum.KeyCode.Two then
         local pos = markPositions[2]
         if pos ~= Vector3.zero then
@@ -1436,10 +1333,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 notifyContent = "传送到标记点2"
                 handled = true
             end
-        else
-            notifyContent = "标记点2未设置"
-            handled = true
-        end
+        else notifyContent = "标记点2未设置"; handled = true end
     elseif key == Enum.KeyCode.Three then
         local pos = markPositions[3]
         if pos ~= Vector3.zero then
@@ -1449,12 +1343,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 notifyContent = "传送到标记点3"
                 handled = true
             end
-        else
-            notifyContent = "标记点3未设置"
-            handled = true
-        end
+        else notifyContent = "标记点3未设置"; handled = true end
     end
-
     if handled then
         pcall(function() WindUI:Notify({ Title = notifyTitle, Content = notifyContent, Duration = 1.5 }) end)
     end
@@ -1495,7 +1385,6 @@ UserInputService.InputChanged:Connect(function(input, gameProcessed)
     end
 end)
 
--- 快捷键提示
 pcall(function()
     local gui = Window.Gui or Window.Window or Window.MainGui
     if gui then
