@@ -712,16 +712,16 @@ local function setGacha(state)
 end
 
 -- ================== UI 构建 ==================
-local GeneralTab = Window:AddTab({ Title = "通用", Icon = "star" })
-local WeirdBatTab = Window:AddTab({ Title = "古怪的球棒", Icon = "star" })
-local NukeTab = Window:AddTab({ Title = "合成核弹", Icon = "star" })
-local AssassinTab = Window:AddTab({ Title = "沉默的刺客", Icon = "star" })
+local GeneralTab = Window:Tab({ Title = "通用", Icon = "star" })
+local WeirdBatTab = Window:Tab({ Title = "古怪的球棒", Icon = "star" })
+local NukeTab = Window:Tab({ Title = "合成核弹", Icon = "star" })
+local AssassinTab = Window:Tab({ Title = "沉默的刺客", Icon = "star" })
 
 -- 通用标签页
-local GenMainSec = GeneralTab:AddSection({ Title = "基本功能", Opened = true })
-pcall(function() toggleRefs.esp = GenMainSec:AddToggle({ Title = "透视", Value = false, Callback = toggleESP }) end)
-pcall(function() toggleRefs.speed = GenMainSec:AddToggle({ Title = "加速", Value = false, Callback = toggleSpeed }) end)
-pcall(function() sliderRefs.speed = GenMainSec:AddSlider({
+local GenMainSec = GeneralTab:Section({ Title = "基本功能", Opened = true })
+pcall(function() toggleRefs.esp = GenMainSec:Toggle({ Title = "透视", Value = false, Callback = toggleESP }) end)
+pcall(function() toggleRefs.speed = GenMainSec:Toggle({ Title = "加速", Value = false, Callback = toggleSpeed }) end)
+pcall(function() sliderRefs.speed = GenMainSec:Slider({
     Title = "速度调节", Value = { Min = 16, Max = 2000, Default = 50 },
     Callback = function(value)
         speedValue = value
@@ -733,7 +733,7 @@ pcall(function() sliderRefs.speed = GenMainSec:AddSlider({
         end
     end
 }) end)
-pcall(function() GenMainSec:AddButton({
+pcall(function() GenMainSec:Button({
     Title = "恢复初始速度",
     Callback = function()
         local char = LocalPlayer.Character
@@ -743,8 +743,8 @@ pcall(function() GenMainSec:AddButton({
     end
 }) end)
 
-pcall(function() toggleRefs.jump = GenMainSec:AddToggle({ Title = "高跳", Value = false, Callback = toggleJump }) end)
-pcall(function() sliderRefs.jump = GenMainSec:AddSlider({
+pcall(function() toggleRefs.jump = GenMainSec:Toggle({ Title = "高跳", Value = false, Callback = toggleJump }) end)
+pcall(function() sliderRefs.jump = GenMainSec:Slider({
     Title = "跳跃高度调节", Value = { Min = 50, Max = 2000, Default = 100 },
     Callback = function(value)
         jumpValue = value
@@ -756,7 +756,7 @@ pcall(function() sliderRefs.jump = GenMainSec:AddSlider({
         end
     end
 }) end)
-pcall(function() GenMainSec:AddButton({
+pcall(function() GenMainSec:Button({
     Title = "恢复初始跳跃",
     Callback = function()
         local char = LocalPlayer.Character
@@ -766,43 +766,43 @@ pcall(function() GenMainSec:AddButton({
     end
 }) end)
 
-pcall(function() toggleRefs.spin = GenMainSec:AddToggle({ Title = "马可波罗", Desc = "baby，你晕了吗", Value = false, Callback = toggleSpin }) end)
-pcall(function() sliderRefs.spin = GenMainSec:AddSlider({
+pcall(function() toggleRefs.spin = GenMainSec:Toggle({ Title = "马可波罗", Desc = "baby，你晕了吗", Value = false, Callback = toggleSpin }) end)
+pcall(function() sliderRefs.spin = GenMainSec:Slider({
     Title = "旋转速度", Desc = "度/秒", Value = { Min = 10, Max = 10000, Default = 100 },
     Callback = function(value) spinSpeed = value end
 }) end)
 
-pcall(function() toggleRefs.nightVision = GenMainSec:AddToggle({ Title = "夜视", Desc = "提亮画面", Value = false, Callback = toggleNightVision }) end)
-pcall(function() toggleRefs.attract = GenMainSec:AddToggle({ Title = "吸人", Desc = "自动传送到最近玩家", Value = false, Callback = toggleAttract }) end)
+pcall(function() toggleRefs.nightVision = GenMainSec:Toggle({ Title = "夜视", Desc = "提亮画面", Value = false, Callback = toggleNightVision }) end)
+pcall(function() toggleRefs.attract = GenMainSec:Toggle({ Title = "吸人", Desc = "自动传送到最近玩家", Value = false, Callback = toggleAttract }) end)
 
 -- 视角相机
-local CameraSec = GeneralTab:AddSection({ Title = "视角相机", Opened = true })
-pcall(function() toggleRefs.freeCam = CameraSec:AddToggle({
+local CameraSec = GeneralTab:Section({ Title = "视角相机", Opened = true })
+pcall(function() toggleRefs.freeCam = CameraSec:Toggle({
     Title = "自由移动相机视角", Desc = "WASD移动，QE升降", Value = false,
     Callback = function(state) if state then enableFreeCam() else disableFreeCam() end end
 }) end)
-pcall(function() sliderRefs.freeCam = CameraSec:AddSlider({
+pcall(function() sliderRefs.freeCam = CameraSec:Slider({
     Title = "自由视角速度", Value = { Min = 10, Max = 200, Default = 50 },
     Callback = function(value) freeCamSpeed = value end
 }) end)
-pcall(function() toggleRefs.fixedCam = CameraSec:AddToggle({
+pcall(function() toggleRefs.fixedCam = CameraSec:Toggle({
     Title = "固定相机视角", Desc = "固定当前位置", Value = false,
     Callback = function(state) if state then enableFixedCam() else disableFixedCam() end end
 }) end)
 
 -- 标记点与循环传送
-local MarkSec = GeneralTab:AddSection({ Title = "标记点与循环传送", Opened = true })
-pcall(function() MarkSec:AddButton({ Title = "标记点1", Callback = function() setMark(1) end }) end)
-pcall(function() MarkSec:AddButton({ Title = "清除标记点1", Callback = function() removeMark(1); markPositions[1] = Vector3.zero end }) end)
-pcall(function() MarkSec:AddButton({ Title = "标记点2", Callback = function() setMark(2) end }) end)
-pcall(function() MarkSec:AddButton({ Title = "清除标记点2", Callback = function() removeMark(2); markPositions[2] = Vector3.zero end }) end)
-pcall(function() MarkSec:AddButton({ Title = "标记点3", Callback = function() setMark(3) end }) end)
-pcall(function() MarkSec:AddButton({ Title = "清除标记点3", Callback = function() removeMark(3); markPositions[3] = Vector3.zero end }) end)
-pcall(function() toggleRefs.loopTeleport = MarkSec:AddToggle({ Title = "循环传送", Value = false, Callback = toggleLoopTeleport }) end)
+local MarkSec = GeneralTab:Section({ Title = "标记点与循环传送", Opened = true })
+pcall(function() MarkSec:Button({ Title = "标记点1", Callback = function() setMark(1) end }) end)
+pcall(function() MarkSec:Button({ Title = "清除标记点1", Callback = function() removeMark(1); markPositions[1] = Vector3.zero end }) end)
+pcall(function() MarkSec:Button({ Title = "标记点2", Callback = function() setMark(2) end }) end)
+pcall(function() MarkSec:Button({ Title = "清除标记点2", Callback = function() removeMark(2); markPositions[2] = Vector3.zero end }) end)
+pcall(function() MarkSec:Button({ Title = "标记点3", Callback = function() setMark(3) end }) end)
+pcall(function() MarkSec:Button({ Title = "清除标记点3", Callback = function() removeMark(3); markPositions[3] = Vector3.zero end }) end)
+pcall(function() toggleRefs.loopTeleport = MarkSec:Toggle({ Title = "循环传送", Value = false, Callback = toggleLoopTeleport }) end)
 
 -- 坐标传送
-local TeleSec = GeneralTab:AddSection({ Title = "坐标传送", Opened = true })
-pcall(function() TeleSec:AddButton({
+local TeleSec = GeneralTab:Section({ Title = "坐标传送", Opened = true })
+pcall(function() TeleSec:Button({
     Title = "复制当前坐标", Callback = function()
         local char = LocalPlayer.Character
         if char and char:FindFirstChild("HumanoidRootPart") then
@@ -814,8 +814,8 @@ pcall(function() TeleSec:AddButton({
     end
 }) end)
 local inputCoord = "0,0,0"
-pcall(function() TeleSec:AddInput({ Title = "目标坐标", Default = "0,0,0", Callback = function(t) inputCoord = t end }) end)
-pcall(function() TeleSec:AddButton({
+pcall(function() TeleSec:Input({ Title = "目标坐标", Default = "0,0,0", Callback = function(t) inputCoord = t end }) end)
+pcall(function() TeleSec:Button({
     Title = "传送", Callback = function()
         local x,y,z = inputCoord:match("([^,]+),([^,]+),([^,]+)")
         if x and y and z then
@@ -829,7 +829,7 @@ pcall(function() TeleSec:AddButton({
 }) end)
 
 -- 一键关闭
-pcall(function() GeneralTab:AddButton({
+pcall(function() GeneralTab:Button({
     Title = "一键关闭所有功能",
     Callback = function()
         for _, t in pairs(toggleRefs) do pcall(function() t:SetValue(false) end) end
@@ -849,9 +849,9 @@ pcall(function() GeneralTab:AddButton({
 }) end)
 
 -- 古怪的球棒标签页
-local WeirdSec = WeirdBatTab:AddSection({ Title = "球棒技能", Opened = true })
+local WeirdSec = WeirdBatTab:Section({ Title = "球棒技能", Opened = true })
 local chainKillEnabled = false local chainKillThread = nil
-pcall(function() toggleRefs.chainKill = WeirdSec:AddToggle({
+pcall(function() toggleRefs.chainKill = WeirdSec:Toggle({
     Title = "秒杀", Value = false,
     Callback = function(s)
         chainKillEnabled = s
@@ -871,7 +871,7 @@ pcall(function() toggleRefs.chainKill = WeirdSec:AddToggle({
 }) end)
 
 local shotbatKillEnabled = false local shotbatKillThread = nil
-pcall(function() toggleRefs.shotbatKill = WeirdSec:AddToggle({
+pcall(function() toggleRefs.shotbatKill = WeirdSec:Toggle({
     Title = "射到精尽(射门棒)", Value = false,
     Callback = function(s)
         shotbatKillEnabled = s
@@ -891,7 +891,7 @@ pcall(function() toggleRefs.shotbatKill = WeirdSec:AddToggle({
 }) end)
 
 local tripbatKillEnabled = false local tripbatKillThread = nil
-pcall(function() toggleRefs.tripbatKill = WeirdSec:AddToggle({
+pcall(function() toggleRefs.tripbatKill = WeirdSec:Toggle({
     Title = "玉面手雷王(子空间跳跃棒)", Value = false,
     Callback = function(s)
         tripbatKillEnabled = s
@@ -911,7 +911,7 @@ pcall(function() toggleRefs.tripbatKill = WeirdSec:AddToggle({
 }) end)
 
 local gubbyEnabled = false local gubbyThread = nil
-pcall(function() toggleRefs.gubby = WeirdSec:AddToggle({
+pcall(function() toggleRefs.gubby = WeirdSec:Toggle({
     Title = "上吧皮卡丘(古比球棒)", Value = false,
     Callback = function(s)
         gubbyEnabled = s
@@ -939,7 +939,7 @@ pcall(function() toggleRefs.gubby = WeirdSec:AddToggle({
 }) end)
 
 local poisonKillEnabled = false local poisonKillThread = nil
-pcall(function() toggleRefs.poisonKill = WeirdSec:AddToggle({
+pcall(function() toggleRefs.poisonKill = WeirdSec:Toggle({
     Title = "绝命毒师(毒液棒)", Value = false,
     Callback = function(s)
         poisonKillEnabled = s
@@ -959,7 +959,7 @@ pcall(function() toggleRefs.poisonKill = WeirdSec:AddToggle({
 }) end)
 
 local aquaKillEnabled = false local aquaKillThread = nil
-pcall(function() toggleRefs.aquaKill = WeirdSec:AddToggle({
+pcall(function() toggleRefs.aquaKill = WeirdSec:Toggle({
     Title = "推推乐（aqua球棒）", Value = false,
     Callback = function(s)
         aquaKillEnabled = s
@@ -979,7 +979,7 @@ pcall(function() toggleRefs.aquaKill = WeirdSec:AddToggle({
 }) end)
 
 local electroKillEnabled = false local electroKillThread = nil
-pcall(function() toggleRefs.electroKill = WeirdSec:AddToggle({
+pcall(function() toggleRefs.electroKill = WeirdSec:Toggle({
     Title = "五雷轰顶(咖喱棒)", Value = false,
     Callback = function(s)
         electroKillEnabled = s
@@ -1026,7 +1026,7 @@ pcall(function() toggleRefs.electroKill = WeirdSec:AddToggle({
 }) end)
 
 local antiFallEnabled = false local antiFallThread = nil
-pcall(function() toggleRefs.antiFall = WeirdSec:AddToggle({
+pcall(function() toggleRefs.antiFall = WeirdSec:Toggle({
     Title = "防坠落", Value = false,
     Callback = function(s)
         antiFallEnabled = s
@@ -1046,7 +1046,7 @@ pcall(function() toggleRefs.antiFall = WeirdSec:AddToggle({
     end
 }) end)
 
-pcall(function() WeirdSec:AddButton({
+pcall(function() WeirdSec:Button({
     Title = "无限提升(力量棒)",
     Callback = function()
         task.spawn(function()
@@ -1063,16 +1063,16 @@ pcall(function() WeirdSec:AddButton({
 }) end)
 
 -- 合成核弹标签页
-local NukeSec = NukeTab:AddSection({ Title = "核弹功能", Opened = true })
-pcall(function() toggleRefs.autoMerge = NukeSec:AddToggle({ Title = "自动合成", Desc = "同等级合成后丢弃，传送到Y=50高空", Value = false, Callback = setAutoMerge }) end)
-pcall(function() toggleRefs.autoShield = NukeSec:AddToggle({ Title = "自动防护罩", Desc = "冷却结束自动开罩", Value = false, Callback = setAutoShield }) end)
-pcall(function() toggleRefs.autoUpgradeAll = NukeSec:AddToggle({ Title = "自动升级（全部）", Desc = "每30秒购买全部升级", Value = false, Callback = setAutoUpgradeAll }) end)
+local NukeSec = NukeTab:Section({ Title = "核弹功能", Opened = true })
+pcall(function() toggleRefs.autoMerge = NukeSec:Toggle({ Title = "自动合成", Desc = "同等级合成后丢弃，传送到Y=50高空", Value = false, Callback = setAutoMerge }) end)
+pcall(function() toggleRefs.autoShield = NukeSec:Toggle({ Title = "自动防护罩", Desc = "冷却结束自动开罩", Value = false, Callback = setAutoShield }) end)
+pcall(function() toggleRefs.autoUpgradeAll = NukeSec:Toggle({ Title = "自动升级（全部）", Desc = "每30秒购买全部升级", Value = false, Callback = setAutoUpgradeAll }) end)
 
 -- 沉默的刺客标签页
-local AssassinSec = AssassinTab:AddSection({ Title = "刺客功能", Opened = true })
-pcall(function() toggleRefs.assassin = AssassinSec:AddToggle({ Title = "强制显示模型", Value = false, Callback = setAssassin }) end)
-pcall(function() toggleRefs.autoAttack = AssassinSec:AddToggle({ Title = "自动秒杀全图", Desc = "全图自动挥刀击杀", Value = false, Callback = setAutoAttack }) end)
-pcall(function() toggleRefs.gacha = AssassinSec:AddToggle({ Title = "自动开箱(神圣)", Value = false, Callback = setGacha }) end)
+local AssassinSec = AssassinTab:Section({ Title = "刺客功能", Opened = true })
+pcall(function() toggleRefs.assassin = AssassinSec:Toggle({ Title = "强制显示模型", Value = false, Callback = setAssassin }) end)
+pcall(function() toggleRefs.autoAttack = AssassinSec:Toggle({ Title = "自动秒杀全图", Desc = "全图自动挥刀击杀", Value = false, Callback = setAutoAttack }) end)
+pcall(function() toggleRefs.gacha = AssassinSec:Toggle({ Title = "自动开箱(神圣)", Value = false, Callback = setGacha }) end)
 
 -- 关闭回调
 Window:OnClose(function()
