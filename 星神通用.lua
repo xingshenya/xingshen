@@ -19,9 +19,6 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
-local EventsFolder = ReplicatedStorage:FindFirstChild("Events")
-local RemoteEvents = EventsFolder and EventsFolder:FindFirstChild("RemoteEvents")
-
 repeat task.wait() until LocalPlayer:FindFirstChild("PlayerGui")
 
 -- 加载 WindUI 库
@@ -85,9 +82,6 @@ if not Window then
     StarterGui:SetCore("SendNotification", {Title = "窗口创建失败", Text = "请重试", Duration = 5})
     return
 end
-
--- 统计 API（部署 Worker 后替换为你的地址）
-local STATS_URL = "https://你的worker名称.你的用户名.workers.dev"
 
 -- ================== 功能变量和定义 ==================
 local toggleRefs = {}
@@ -253,7 +247,6 @@ local function setMark(index)
         label.Font = Enum.Font.GothamBold; label.TextStrokeTransparency = 0; label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
         label.Parent = bill
         markObjects[index] = { Part = part }; markPositions[index] = pos
-        pcall(function() WindUI:Notify({ Title = "标记点"..index, Content = "已设置", Duration = 1.5 }) end)
     end
 end
 
@@ -717,145 +710,16 @@ local function setGacha(state)
     end
 end
 
--- ================== 死亡之死 · 加速 ==================
-local FlySettings = {
-    FlySpeed = 60,
-    Flying = false,
-    Noclip = false
-}
-
-local flyVelocity = nil
-local flyGyro = nil
-local flySteppedConn = nil
-local flyHeartbeatConn = nil
-
-local function cleanupFly()
-    if flyVelocity then flyVelocity:Destroy(); flyVelocity = nil end
-    if flyGyro then flyGyro:Destroy(); flyGyro = nil end
-    if flySteppedConn then flySteppedConn:Disconnect(); flySteppedConn = nil end
-    if flyHeartbeatConn then flyHeartbeatConn:Disconnect(); flyHeartbeatConn = nil end
-end
-
-local function startFly()
-    FlySettings.Flying = true
-    local char = LocalPlayer.Character
-    if not char then FlySettings.Flying = false; return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then FlySettings.Flying = false; return end
-
-    cleanupFly()
-
-    flyVelocity = Instance.new("BodyVelocity")
-    flyVelocity.MaxForce = Vector3.new(1e5, 0, 1e5)
-    flyVelocity.Velocity = Vector3.zero
-    flyVelocity.P = 1000
-    flyVelocity.Parent = hrp
-
-    flyGyro = Instance.new("BodyGyro")
-    flyGyro.MaxTorque = Vector3.new(1, 1, 1) * 1e6
-    flyGyro.P = 3000
-    flyGyro.D = 50
-    flyGyro.CFrame = hrp.CFrame
-    flyGyro.Parent = hrp
-
-    hum.WalkSpeed = 0
-    hum.AutoRotate = false
-
-    flySteppedConn = RunService.Stepped:Connect(function()
-        if FlySettings.Noclip and FlySettings.Flying then
-            local c = LocalPlayer.Character
-            if c then
-                for _, p in ipairs(c:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = false end
-                end
-            end
-        end
-    end)
-
-    flyHeartbeatConn = RunService.Heartbeat:Connect(function()
-        if not FlySettings.Flying then return end
-        local charNow = LocalPlayer.Character
-        if not charNow then return end
-        local hrpNow = charNow:FindFirstChild("HumanoidRootPart")
-        local humNow = charNow:FindFirstChildOfClass("Humanoid")
-        if not hrpNow or not humNow then return end
-
-        if not flyVelocity or not flyVelocity.Parent then
-            flyVelocity = hrpNow:FindFirstChildOfClass("BodyVelocity")
-            if not flyVelocity then
-                flyVelocity = Instance.new("BodyVelocity")
-                flyVelocity.MaxForce = Vector3.new(1e5, 0, 1e5)
-                flyVelocity.Velocity = Vector3.zero
-                flyVelocity.P = 1000
-                flyVelocity.Parent = hrpNow
-            end
-        end
-        if not flyGyro or not flyGyro.Parent then
-            flyGyro = hrpNow:FindFirstChildOfClass("BodyGyro")
-            if not flyGyro then
-                flyGyro = Instance.new("BodyGyro")
-                flyGyro.MaxTorque = Vector3.new(1, 1, 1) * 1e6
-                flyGyro.P = 3000
-                flyGyro.D = 50
-                flyGyro.Parent = hrpNow
-            end
-        end
-
-        local moveDir = humNow.MoveDirection
-        local velocity = Vector3.zero
-        if moveDir.Magnitude > 0.05 then
-            velocity = moveDir.Unit * FlySettings.FlySpeed
-        end
-        flyVelocity.Velocity = velocity
-
-        local camLook = Camera.CFrame.LookVector
-        local forward = Vector3.new(camLook.X, 0, camLook.Z)
-        if forward.Magnitude > 0.001 then
-            forward = forward.Unit
-            flyGyro.CFrame = CFrame.new(hrpNow.Position, hrpNow.Position + forward)
-        end
-    end)
-
-    pcall(function() WindUI:Notify({ Title = "加速已开启", Content = "加速开启成功", Duration = 2 }) end)
-end
-
-local function stopFly()
-    FlySettings.Flying = false
-    cleanupFly()
-
-    local char = LocalPlayer.Character
-    if char then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hum then hum.WalkSpeed = 16; hum.JumpPower = 50; hum.AutoRotate = true end
-        if hrp then hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero end
-    end
-
-    pcall(function() WindUI:Notify({ Title = "加速已关闭", Content = "角色状态恢复", Duration = 2 }) end)
-end
-
-local function toggleFlyState(state)
-    if state then startFly() else stopFly() end
-end
-
--- 死亡之死 · 功能区域
-local ruisStaminaLock = false
-local ruisNoCooldown = false
-local ruisGodMode = false
-
--- ================== UI 构建 ==================
-local GeneralTab = Window:Tab({ Title = "通用", Icon = "star" })
-local WeirdBatTab = Window:Tab({ Title = "古怪的球棒", Icon = "star" })
-local NukeTab = Window:Tab({ Title = "合成核弹", Icon = "star" })
-local AssassinTab = Window:Tab({ Title = "沉默的刺客", Icon = "star" })
-local DeathTab = Window:Tab({ Title = "死亡之死", Icon = "skull" })
+-- ================== UI 构建（无折叠区域，直接平铺） ==================
+local GeneralTab = Window:AddTab({ Title = "通用", Icon = "star" })
+local WeirdBatTab = Window:AddTab({ Title = "古怪的球棒", Icon = "star" })
+local NukeTab = Window:AddTab({ Title = "合成核弹", Icon = "star" })
+local AssassinTab = Window:AddTab({ Title = "沉默的刺客", Icon = "star" })
 
 -- 通用标签页
-local GenMainSec = GeneralTab:Section({ Title = "基本功能", Opened = true })
-pcall(function() toggleRefs.esp = GenMainSec:Toggle({ Title = "透视", Value = false, Callback = toggleESP }) end)
-pcall(function() toggleRefs.speed = GenMainSec:Toggle({ Title = "加速", Value = false, Callback = toggleSpeed }) end)
-pcall(function() sliderRefs.speed = GenMainSec:Slider({
+pcall(function() toggleRefs.esp = GeneralTab:AddToggle({ Title = "透视", Value = false, Callback = toggleESP }) end)
+pcall(function() toggleRefs.speed = GeneralTab:AddToggle({ Title = "加速", Value = false, Callback = toggleSpeed }) end)
+pcall(function() sliderRefs.speed = GeneralTab:AddSlider({
     Title = "速度调节", Value = { Min = 16, Max = 2000, Default = 50 },
     Callback = function(value)
         speedValue = value
@@ -867,7 +731,7 @@ pcall(function() sliderRefs.speed = GenMainSec:Slider({
         end
     end
 }) end)
-pcall(function() GenMainSec:Button({
+pcall(function() GeneralTab:AddButton({
     Title = "恢复初始速度",
     Callback = function()
         local char = LocalPlayer.Character
@@ -877,8 +741,8 @@ pcall(function() GenMainSec:Button({
     end
 }) end)
 
-pcall(function() toggleRefs.jump = GenMainSec:Toggle({ Title = "高跳", Value = false, Callback = toggleJump }) end)
-pcall(function() sliderRefs.jump = GenMainSec:Slider({
+pcall(function() toggleRefs.jump = GeneralTab:AddToggle({ Title = "高跳", Value = false, Callback = toggleJump }) end)
+pcall(function() sliderRefs.jump = GeneralTab:AddSlider({
     Title = "跳跃高度调节", Value = { Min = 50, Max = 2000, Default = 100 },
     Callback = function(value)
         jumpValue = value
@@ -890,7 +754,7 @@ pcall(function() sliderRefs.jump = GenMainSec:Slider({
         end
     end
 }) end)
-pcall(function() GenMainSec:Button({
+pcall(function() GeneralTab:AddButton({
     Title = "恢复初始跳跃",
     Callback = function()
         local char = LocalPlayer.Character
@@ -900,77 +764,70 @@ pcall(function() GenMainSec:Button({
     end
 }) end)
 
-pcall(function() toggleRefs.spin = GenMainSec:Toggle({ Title = "马可波罗", Desc = "baby，你晕了吗", Value = false, Callback = toggleSpin }) end)
-pcall(function() sliderRefs.spin = GenMainSec:Slider({
+pcall(function() toggleRefs.spin = GeneralTab:AddToggle({ Title = "马可波罗", Desc = "baby，你晕了吗", Value = false, Callback = toggleSpin }) end)
+pcall(function() sliderRefs.spin = GeneralTab:AddSlider({
     Title = "旋转速度", Desc = "度/秒", Value = { Min = 10, Max = 10000, Default = 100 },
     Callback = function(value) spinSpeed = value end
 }) end)
 
-pcall(function() toggleRefs.nightVision = GenMainSec:Toggle({ Title = "夜视", Desc = "提亮画面", Value = false, Callback = toggleNightVision }) end)
-pcall(function() toggleRefs.attract = GenMainSec:Toggle({ Title = "吸人", Desc = "自动传送到最近玩家", Value = false, Callback = toggleAttract }) end)
+pcall(function() toggleRefs.nightVision = GeneralTab:AddToggle({ Title = "夜视", Desc = "提亮画面", Value = false, Callback = toggleNightVision }) end)
+pcall(function() toggleRefs.attract = GeneralTab:AddToggle({ Title = "吸人", Desc = "自动传送到最近玩家", Value = false, Callback = toggleAttract }) end)
 
 -- 视角相机
-local CameraSec = GeneralTab:Section({ Title = "视角相机", Opened = true })
-pcall(function() toggleRefs.freeCam = CameraSec:Toggle({
+pcall(function() toggleRefs.freeCam = GeneralTab:AddToggle({
     Title = "自由移动相机视角", Desc = "WASD移动，QE升降", Value = false,
     Callback = function(state) if state then enableFreeCam() else disableFreeCam() end end
 }) end)
-pcall(function() sliderRefs.freeCam = CameraSec:Slider({
+pcall(function() sliderRefs.freeCam = GeneralTab:AddSlider({
     Title = "自由视角速度", Value = { Min = 10, Max = 200, Default = 50 },
     Callback = function(value) freeCamSpeed = value end
 }) end)
-pcall(function() toggleRefs.fixedCam = CameraSec:Toggle({
+pcall(function() toggleRefs.fixedCam = GeneralTab:AddToggle({
     Title = "固定相机视角", Desc = "固定当前位置", Value = false,
     Callback = function(state) if state then enableFixedCam() else disableFixedCam() end end
 }) end)
 
 -- 标记点与循环传送
-local MarkSec = GeneralTab:Section({ Title = "标记点与循环传送", Opened = true })
-pcall(function() MarkSec:Button({ Title = "标记点1", Callback = function() setMark(1) end }) end)
-pcall(function() MarkSec:Button({ Title = "清除标记点1", Callback = function() removeMark(1); markPositions[1] = Vector3.zero end }) end)
-pcall(function() MarkSec:Button({ Title = "标记点2", Callback = function() setMark(2) end }) end)
-pcall(function() MarkSec:Button({ Title = "清除标记点2", Callback = function() removeMark(2); markPositions[2] = Vector3.zero end }) end)
-pcall(function() MarkSec:Button({ Title = "标记点3", Callback = function() setMark(3) end }) end)
-pcall(function() MarkSec:Button({ Title = "清除标记点3", Callback = function() removeMark(3); markPositions[3] = Vector3.zero end }) end)
-pcall(function() toggleRefs.loopTeleport = MarkSec:Toggle({ Title = "循环传送", Value = false, Callback = toggleLoopTeleport }) end)
+pcall(function() GeneralTab:AddButton({ Title = "标记点1", Callback = function() setMark(1) end }) end)
+pcall(function() GeneralTab:AddButton({ Title = "清除标记点1", Callback = function() removeMark(1); markPositions[1] = Vector3.zero end }) end)
+pcall(function() GeneralTab:AddButton({ Title = "标记点2", Callback = function() setMark(2) end }) end)
+pcall(function() GeneralTab:AddButton({ Title = "清除标记点2", Callback = function() removeMark(2); markPositions[2] = Vector3.zero end }) end)
+pcall(function() GeneralTab:AddButton({ Title = "标记点3", Callback = function() setMark(3) end }) end)
+pcall(function() GeneralTab:AddButton({ Title = "清除标记点3", Callback = function() removeMark(3); markPositions[3] = Vector3.zero end }) end)
+pcall(function() toggleRefs.loopTeleport = GeneralTab:AddToggle({ Title = "循环传送", Value = false, Callback = toggleLoopTeleport }) end)
 
 -- 坐标传送
-local TeleSec = GeneralTab:Section({ Title = "坐标传送", Opened = true })
-pcall(function() TeleSec:Button({
+pcall(function() GeneralTab:AddButton({
     Title = "复制当前坐标", Callback = function()
         local char = LocalPlayer.Character
         if char and char:FindFirstChild("HumanoidRootPart") then
             local pos = char.HumanoidRootPart.Position
             local str = string.format("%d,%d,%d", math.round(pos.X), math.round(pos.Y), math.round(pos.Z))
             if setclipboard then setclipboard(str) else StarterGui:SetCore("SendNotification",{Title="坐标已复制",Text=str,Duration=2}) end
-            pcall(function() WindUI:Notify({Title="复制成功",Content=str,Duration=1.5}) end)
         end
     end
 }) end)
 local inputCoord = "0,0,0"
-pcall(function() TeleSec:Input({ Title = "目标坐标", Default = "0,0,0", Callback = function(t) inputCoord = t end }) end)
-pcall(function() TeleSec:Button({
+pcall(function() GeneralTab:AddInput({ Title = "目标坐标", Default = "0,0,0", Callback = function(t) inputCoord = t end }) end)
+pcall(function() GeneralTab:AddButton({
     Title = "传送", Callback = function()
         local x,y,z = inputCoord:match("([^,]+),([^,]+),([^,]+)")
         if x and y and z then
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 char.HumanoidRootPart.CFrame = CFrame.new(tonumber(x) or 0, tonumber(y) or 0, tonumber(z) or 0)
-                pcall(function() WindUI:Notify({Title="传送成功",Content=inputCoord,Duration=1}) end)
             end
-        else pcall(function() WindUI:Notify({Title="格式错误",Content="请使用 X,Y,Z 格式",Duration=2}) end) end
+        end
     end
 }) end)
 
 -- 一键关闭
-pcall(function() GeneralTab:Button({
+pcall(function() GeneralTab:AddButton({
     Title = "一键关闭所有功能",
     Callback = function()
         for _, t in pairs(toggleRefs) do pcall(function() t:SetValue(false) end) end
         toggleESP(false)
         if spinConnection then spinConnection:Disconnect(); spinConnection = nil end
-        stopFly()
-        ruisStaminaLock = false; ruisNoCooldown = false; ruisGodMode = false
         restoreDefaultCamera()
         Lighting.Ambient = originalAmbient; Lighting.OutdoorAmbient = originalOutdoorAmbient
         Lighting.FogEnd = originalFogEnd; Lighting.Brightness = originalBrightness
@@ -979,15 +836,13 @@ pcall(function() GeneralTab:Button({
             local hum = char:FindFirstChildOfClass("Humanoid")
             if hum then hum.AutoRotate = true; hum.WalkSpeed = 16; hum.JumpPower = 50 end
         end
-        speedEnabled = false; jumpEnabled = false; FlySettings.Flying = false
-        pcall(function() WindUI:Notify({ Title = "已关闭", Content = "所有功能已关闭", Duration = 3 }) end)
+        speedEnabled = false; jumpEnabled = false
     end
 }) end)
 
 -- 古怪的球棒标签页
-local WeirdSec = WeirdBatTab:Section({ Title = "球棒技能", Opened = true })
 local chainKillEnabled = false local chainKillThread = nil
-pcall(function() toggleRefs.chainKill = WeirdSec:Toggle({
+pcall(function() toggleRefs.chainKill = WeirdBatTab:AddToggle({
     Title = "秒杀", Value = false,
     Callback = function(s)
         chainKillEnabled = s
@@ -1007,7 +862,7 @@ pcall(function() toggleRefs.chainKill = WeirdSec:Toggle({
 }) end)
 
 local shotbatKillEnabled = false local shotbatKillThread = nil
-pcall(function() toggleRefs.shotbatKill = WeirdSec:Toggle({
+pcall(function() toggleRefs.shotbatKill = WeirdBatTab:AddToggle({
     Title = "射到精尽(射门棒)", Value = false,
     Callback = function(s)
         shotbatKillEnabled = s
@@ -1027,7 +882,7 @@ pcall(function() toggleRefs.shotbatKill = WeirdSec:Toggle({
 }) end)
 
 local tripbatKillEnabled = false local tripbatKillThread = nil
-pcall(function() toggleRefs.tripbatKill = WeirdSec:Toggle({
+pcall(function() toggleRefs.tripbatKill = WeirdBatTab:AddToggle({
     Title = "玉面手雷王(子空间跳跃棒)", Value = false,
     Callback = function(s)
         tripbatKillEnabled = s
@@ -1047,7 +902,7 @@ pcall(function() toggleRefs.tripbatKill = WeirdSec:Toggle({
 }) end)
 
 local gubbyEnabled = false local gubbyThread = nil
-pcall(function() toggleRefs.gubby = WeirdSec:Toggle({
+pcall(function() toggleRefs.gubby = WeirdBatTab:AddToggle({
     Title = "上吧皮卡丘(古比球棒)", Value = false,
     Callback = function(s)
         gubbyEnabled = s
@@ -1075,7 +930,7 @@ pcall(function() toggleRefs.gubby = WeirdSec:Toggle({
 }) end)
 
 local poisonKillEnabled = false local poisonKillThread = nil
-pcall(function() toggleRefs.poisonKill = WeirdSec:Toggle({
+pcall(function() toggleRefs.poisonKill = WeirdBatTab:AddToggle({
     Title = "绝命毒师(毒液棒)", Value = false,
     Callback = function(s)
         poisonKillEnabled = s
@@ -1095,7 +950,7 @@ pcall(function() toggleRefs.poisonKill = WeirdSec:Toggle({
 }) end)
 
 local aquaKillEnabled = false local aquaKillThread = nil
-pcall(function() toggleRefs.aquaKill = WeirdSec:Toggle({
+pcall(function() toggleRefs.aquaKill = WeirdBatTab:AddToggle({
     Title = "推推乐（aqua球棒）", Value = false,
     Callback = function(s)
         aquaKillEnabled = s
@@ -1115,7 +970,7 @@ pcall(function() toggleRefs.aquaKill = WeirdSec:Toggle({
 }) end)
 
 local electroKillEnabled = false local electroKillThread = nil
-pcall(function() toggleRefs.electroKill = WeirdSec:Toggle({
+pcall(function() toggleRefs.electroKill = WeirdBatTab:AddToggle({
     Title = "五雷轰顶(咖喱棒)", Value = false,
     Callback = function(s)
         electroKillEnabled = s
@@ -1162,7 +1017,7 @@ pcall(function() toggleRefs.electroKill = WeirdSec:Toggle({
 }) end)
 
 local antiFallEnabled = false local antiFallThread = nil
-pcall(function() toggleRefs.antiFall = WeirdSec:Toggle({
+pcall(function() toggleRefs.antiFall = WeirdBatTab:AddToggle({
     Title = "防坠落", Value = false,
     Callback = function(s)
         antiFallEnabled = s
@@ -1182,7 +1037,7 @@ pcall(function() toggleRefs.antiFall = WeirdSec:Toggle({
     end
 }) end)
 
-pcall(function() WeirdSec:Button({
+pcall(function() WeirdBatTab:AddButton({
     Title = "无限提升(力量棒)",
     Callback = function()
         task.spawn(function()
@@ -1199,153 +1054,17 @@ pcall(function() WeirdSec:Button({
 }) end)
 
 -- 合成核弹标签页
-local NukeSec = NukeTab:Section({ Title = "核弹功能", Opened = true })
-pcall(function() toggleRefs.autoMerge = NukeSec:Toggle({ Title = "自动合成", Desc = "同等级合成后丢弃，传送到Y=50高空", Value = false, Callback = setAutoMerge }) end)
-pcall(function() toggleRefs.autoShield = NukeSec:Toggle({ Title = "自动防护罩", Desc = "冷却结束自动开罩", Value = false, Callback = setAutoShield }) end)
-pcall(function() toggleRefs.autoUpgradeAll = NukeSec:Toggle({ Title = "自动升级（全部）", Desc = "每30秒购买全部升级", Value = false, Callback = setAutoUpgradeAll }) end)
+pcall(function() toggleRefs.autoMerge = NukeTab:AddToggle({ Title = "自动合成", Desc = "同等级合成后丢弃，传送到Y=50高空", Value = false, Callback = setAutoMerge }) end)
+pcall(function() toggleRefs.autoShield = NukeTab:AddToggle({ Title = "自动防护罩", Desc = "冷却结束自动开罩", Value = false, Callback = setAutoShield }) end)
+pcall(function() toggleRefs.autoUpgradeAll = NukeTab:AddToggle({ Title = "自动升级（全部）", Desc = "每30秒购买全部升级", Value = false, Callback = setAutoUpgradeAll }) end)
 
 -- 沉默的刺客标签页
-local AssassinSec = AssassinTab:Section({ Title = "刺客功能", Opened = true })
-pcall(function() toggleRefs.assassin = AssassinSec:Toggle({ Title = "强制显示模型", Value = false, Callback = setAssassin }) end)
-pcall(function() toggleRefs.autoAttack = AssassinSec:Toggle({ Title = "自动秒杀全图", Desc = "全图自动挥刀击杀", Value = false, Callback = setAutoAttack }) end)
-pcall(function() toggleRefs.gacha = AssassinSec:Toggle({ Title = "自动开箱(神圣)", Value = false, Callback = setGacha }) end)
-
--- 死亡之死标签页
-local DeathMainSec = DeathTab:Section({ Title = "加速", Opened = true })
-pcall(function() toggleRefs.fly = DeathMainSec:Toggle({ Title = "加速", Value = false, Callback = toggleFlyState }) end)
-pcall(function() sliderRefs.flySpeed = DeathMainSec:Slider({
-    Title = "加速速度", Value = { Min = 10, Max = 120, Default = 60 },
-    Callback = function(value) FlySettings.FlySpeed = value end
-}) end)
-pcall(function() toggleRefs.flyNoclip = DeathMainSec:Toggle({ Title = "穿墙", Value = false, Callback = function(s) FlySettings.Noclip = s end }) end)
-pcall(function() DeathMainSec:Button({
-    Title = "紧急降落",
-    Callback = function()
-        if FlySettings.Flying then stopFly() end
-        local char = LocalPlayer.Character
-        if char and char:FindFirstChild("HumanoidRootPart") then
-            char.HumanoidRootPart.CFrame = CFrame.new(char.HumanoidRootPart.Position.X, 10, char.HumanoidRootPart.Position.Z)
-        end
-        pcall(function() WindUI:Notify({ Title = "已降落", Content = "回到地面", Duration = 2 }) end)
-    end
-}) end)
-
--- 死亡之死 · 功能区域（默认折叠）
-local DeathRuisSec = DeathTab:Section({ Title = "功能区域", Opened = false })
-pcall(function() toggleRefs.ruisStaminaLock = DeathRuisSec:Toggle({
-    Title = "体力锁定(搭配加速)", Desc = "持续恢复体力并锁定UI为满值", Value = false,
-    Callback = function(state) ruisStaminaLock = state end
-}) end)
-pcall(function() toggleRefs.ruisNoCooldown = DeathRuisSec:Toggle({
-    Title = "无冷却技能(紫薇)", Desc = "清除角色Cooldown属性", Value = false,
-    Callback = function(state) ruisNoCooldown = state end
-}) end)
-pcall(function() toggleRefs.ruisGodMode = DeathRuisSec:Toggle({
-    Title = "无敌模式(紫薇)", Desc = "锁定血量为满值", Value = false,
-    Callback = function(state)
-        ruisGodMode = state
-        if state then
-            local char = LocalPlayer.Character
-            if char and char:FindFirstChildOfClass("Humanoid") then
-                char:FindFirstChildOfClass("Humanoid").Health = char:FindFirstChildOfClass("Humanoid").MaxHealth
-            end
-        end
-    end
-}) end)
-
--- 后台统计标签页
-local StatsTab = Window:Tab({ Title = "后台统计", Icon = "chart" })
-local StatsSec = StatsTab:Section({ Title = "访问统计", Opened = true })
-
--- 统计状态
-local statsTotalHits = 0
-local statsDailyHits = 0
-local statsLabel = nil
-local playerListLabel = nil
-
--- 记录一次打开
-local function recordHit()
-    if STATS_URL:find("你的worker名称") then return end
-    pcall(function()
-        local res = game:HttpGet(STATS_URL .. "/hit", true)
-        local data = game:GetService("HttpService"):JSONDecode(res)
-        statsTotalHits = data.total or 0
-        statsDailyHits = data.daily or 0
-        updateStatsDisplay()
-    end)
-end
-
--- 获取统计
-local function fetchStats()
-    if STATS_URL:find("你的worker名称") then
-        pcall(function() WindUI:Notify({ Title = "提示", Content = "请先部署Worker并替换STATS_URL", Duration = 3 }) end)
-        return
-    end
-    pcall(function()
-        local res = game:HttpGet(STATS_URL .. "/stats", true)
-        local data = game:GetService("HttpService"):JSONDecode(res)
-        statsTotalHits = data.total or 0
-        statsDailyHits = data.daily or 0
-        updateStatsDisplay()
-    end)
-end
-
--- 更新统计显示
-local function updateStatsDisplay()
-    local playerCount = #Players:GetPlayers()
-    local list = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        table.insert(list, p.Name)
-    end
-    local playerList = table.concat(list, "\n")
-    local text = string.format(
-        "在线玩家: %d 人\n总打开次数: %d\n今日打开次数: %d\n\n玩家列表:\n%s",
-        playerCount, statsTotalHits, statsDailyHits, playerList
-    )
-    if playerListLabel then
-        playerListLabel.Text = text
-    end
-end
-
--- 玩家列表标签
-pcall(function()
-    playerListLabel = Instance.new("TextLabel")
-    playerListLabel.Size = UDim2.new(1, -20, 0, 300)
-    playerListLabel.Position = UDim2.new(0, 10, 0, 10)
-    playerListLabel.BackgroundTransparency = 1
-    playerListLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    playerListLabel.TextSize = 13
-    playerListLabel.Font = Enum.Font.Gotham
-    playerListLabel.TextXAlignment = Enum.TextXAlignment.Left
-    playerListLabel.TextYAlignment = Enum.TextYAlignment.Top
-    playerListLabel.TextWrapped = true
-    playerListLabel.Text = "加载中..."
-    playerListLabel.Parent = StatsSec
-    updateStatsDisplay()
-end)
-
-pcall(function() StatsSec:Button({
-    Title = "刷新统计",
-    Callback = function()
-        fetchStats()
-        updateStatsDisplay()
-        pcall(function() WindUI:Notify({ Title = "已刷新", Content = "统计数据已更新", Duration = 1.5 }) end)
-    end
-}) end)
-
--- 玩家列表自动刷新
-task.spawn(function()
-    while task.wait(5) do
-        updateStatsDisplay()
-    end
-end)
-
--- 记录本次打开
-recordHit()
+pcall(function() toggleRefs.assassin = AssassinTab:AddToggle({ Title = "强制显示模型", Value = false, Callback = setAssassin }) end)
+pcall(function() toggleRefs.autoAttack = AssassinTab:AddToggle({ Title = "自动秒杀全图", Desc = "全图自动挥刀击杀", Value = false, Callback = setAutoAttack }) end)
+pcall(function() toggleRefs.gacha = AssassinTab:AddToggle({ Title = "自动开箱(神圣)", Value = false, Callback = setGacha }) end)
 
 -- 关闭回调
 Window:OnClose(function()
-    stopFly()
     Lighting.Ambient = originalAmbient; Lighting.OutdoorAmbient = originalOutdoorAmbient
     Lighting.FogEnd = originalFogEnd; Lighting.Brightness = originalBrightness
     restoreDefaultCamera()
@@ -1377,58 +1096,4 @@ LocalPlayer.CharacterAdded:Connect(function(char)
         Camera.CameraType = Enum.CameraType.Custom
         Camera.CameraSubject = char:FindFirstChildOfClass("Humanoid")
     end
-    -- 重生恢复加速
-    if FlySettings.Flying then
-        task.wait(0.5)
-        startFly()
-    end
 end)
-
--- 死亡之死 · 功能区域持续效果
-RunService.Heartbeat:Connect(function(dt)
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-
-    if ruisStaminaLock and RemoteEvents then
-        local stamMod = RemoteEvents:FindFirstChild("StaminaModifier")
-        if stamMod then
-            pcall(function() stamMod:FireServer(true) end)
-        end
-        pcall(function()
-            local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-            if playerGui then
-                local mainGui = playerGui:FindFirstChild("MainGui")
-                if mainGui then
-                    local roundUI = mainGui:FindFirstChild("RoundUI")
-                    if roundUI then
-                        local playerUI = roundUI:FindFirstChild("PlayerUI")
-                        if playerUI then
-                            local stamBar = playerUI:FindFirstChild("StaminaBar")
-                            if stamBar then
-                                local bar = stamBar:FindFirstChild("Bar")
-                                if bar then bar.Size = UDim2.new(1, 0, 1, 0) end
-                            end
-                        end
-                    end
-                end
-            end
-        end)
-    end
-
-    if ruisGodMode then
-        hum.Health = hum.MaxHealth
-    end
-
-    if ruisNoCooldown then
-        local attrs = char:GetAttributes()
-        for k, v in pairs(attrs) do
-            if type(k) == "string" and k:find("Cooldown") then
-                pcall(function() char:SetAttribute(k, 0) end)
-            end
-        end
-    end
-end)
-
-pcall(function() WindUI:Notify({ Title = "VIP 脚本", Content = "加载成功！所有功能就绪", Duration = 3 }) end)
