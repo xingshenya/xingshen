@@ -247,6 +247,7 @@ local function setMark(index)
         label.Font = Enum.Font.GothamBold; label.TextStrokeTransparency = 0; label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
         label.Parent = bill
         markObjects[index] = { Part = part }; markPositions[index] = pos
+        pcall(function() WindUI:Notify({ Title = "标记点"..index, Content = "已设置", Duration = 1.5 }) end)
     end
 end
 
@@ -710,16 +711,17 @@ local function setGacha(state)
     end
 end
 
--- ================== UI 构建（无折叠区域，直接平铺） ==================
+-- ================== UI 构建 ==================
 local GeneralTab = Window:AddTab({ Title = "通用", Icon = "star" })
 local WeirdBatTab = Window:AddTab({ Title = "古怪的球棒", Icon = "star" })
 local NukeTab = Window:AddTab({ Title = "合成核弹", Icon = "star" })
 local AssassinTab = Window:AddTab({ Title = "沉默的刺客", Icon = "star" })
 
 -- 通用标签页
-pcall(function() toggleRefs.esp = GeneralTab:AddToggle({ Title = "透视", Value = false, Callback = toggleESP }) end)
-pcall(function() toggleRefs.speed = GeneralTab:AddToggle({ Title = "加速", Value = false, Callback = toggleSpeed }) end)
-pcall(function() sliderRefs.speed = GeneralTab:AddSlider({
+local GenMainSec = GeneralTab:AddSection({ Title = "基本功能", Opened = true })
+pcall(function() toggleRefs.esp = GenMainSec:AddToggle({ Title = "透视", Value = false, Callback = toggleESP }) end)
+pcall(function() toggleRefs.speed = GenMainSec:AddToggle({ Title = "加速", Value = false, Callback = toggleSpeed }) end)
+pcall(function() sliderRefs.speed = GenMainSec:AddSlider({
     Title = "速度调节", Value = { Min = 16, Max = 2000, Default = 50 },
     Callback = function(value)
         speedValue = value
@@ -731,7 +733,7 @@ pcall(function() sliderRefs.speed = GeneralTab:AddSlider({
         end
     end
 }) end)
-pcall(function() GeneralTab:AddButton({
+pcall(function() GenMainSec:AddButton({
     Title = "恢复初始速度",
     Callback = function()
         local char = LocalPlayer.Character
@@ -741,8 +743,8 @@ pcall(function() GeneralTab:AddButton({
     end
 }) end)
 
-pcall(function() toggleRefs.jump = GeneralTab:AddToggle({ Title = "高跳", Value = false, Callback = toggleJump }) end)
-pcall(function() sliderRefs.jump = GeneralTab:AddSlider({
+pcall(function() toggleRefs.jump = GenMainSec:AddToggle({ Title = "高跳", Value = false, Callback = toggleJump }) end)
+pcall(function() sliderRefs.jump = GenMainSec:AddSlider({
     Title = "跳跃高度调节", Value = { Min = 50, Max = 2000, Default = 100 },
     Callback = function(value)
         jumpValue = value
@@ -754,7 +756,7 @@ pcall(function() sliderRefs.jump = GeneralTab:AddSlider({
         end
     end
 }) end)
-pcall(function() GeneralTab:AddButton({
+pcall(function() GenMainSec:AddButton({
     Title = "恢复初始跳跃",
     Callback = function()
         local char = LocalPlayer.Character
@@ -764,60 +766,65 @@ pcall(function() GeneralTab:AddButton({
     end
 }) end)
 
-pcall(function() toggleRefs.spin = GeneralTab:AddToggle({ Title = "马可波罗", Desc = "baby，你晕了吗", Value = false, Callback = toggleSpin }) end)
-pcall(function() sliderRefs.spin = GeneralTab:AddSlider({
+pcall(function() toggleRefs.spin = GenMainSec:AddToggle({ Title = "马可波罗", Desc = "baby，你晕了吗", Value = false, Callback = toggleSpin }) end)
+pcall(function() sliderRefs.spin = GenMainSec:AddSlider({
     Title = "旋转速度", Desc = "度/秒", Value = { Min = 10, Max = 10000, Default = 100 },
     Callback = function(value) spinSpeed = value end
 }) end)
 
-pcall(function() toggleRefs.nightVision = GeneralTab:AddToggle({ Title = "夜视", Desc = "提亮画面", Value = false, Callback = toggleNightVision }) end)
-pcall(function() toggleRefs.attract = GeneralTab:AddToggle({ Title = "吸人", Desc = "自动传送到最近玩家", Value = false, Callback = toggleAttract }) end)
+pcall(function() toggleRefs.nightVision = GenMainSec:AddToggle({ Title = "夜视", Desc = "提亮画面", Value = false, Callback = toggleNightVision }) end)
+pcall(function() toggleRefs.attract = GenMainSec:AddToggle({ Title = "吸人", Desc = "自动传送到最近玩家", Value = false, Callback = toggleAttract }) end)
 
 -- 视角相机
-pcall(function() toggleRefs.freeCam = GeneralTab:AddToggle({
+local CameraSec = GeneralTab:AddSection({ Title = "视角相机", Opened = true })
+pcall(function() toggleRefs.freeCam = CameraSec:AddToggle({
     Title = "自由移动相机视角", Desc = "WASD移动，QE升降", Value = false,
     Callback = function(state) if state then enableFreeCam() else disableFreeCam() end end
 }) end)
-pcall(function() sliderRefs.freeCam = GeneralTab:AddSlider({
+pcall(function() sliderRefs.freeCam = CameraSec:AddSlider({
     Title = "自由视角速度", Value = { Min = 10, Max = 200, Default = 50 },
     Callback = function(value) freeCamSpeed = value end
 }) end)
-pcall(function() toggleRefs.fixedCam = GeneralTab:AddToggle({
+pcall(function() toggleRefs.fixedCam = CameraSec:AddToggle({
     Title = "固定相机视角", Desc = "固定当前位置", Value = false,
     Callback = function(state) if state then enableFixedCam() else disableFixedCam() end end
 }) end)
 
 -- 标记点与循环传送
-pcall(function() GeneralTab:AddButton({ Title = "标记点1", Callback = function() setMark(1) end }) end)
-pcall(function() GeneralTab:AddButton({ Title = "清除标记点1", Callback = function() removeMark(1); markPositions[1] = Vector3.zero end }) end)
-pcall(function() GeneralTab:AddButton({ Title = "标记点2", Callback = function() setMark(2) end }) end)
-pcall(function() GeneralTab:AddButton({ Title = "清除标记点2", Callback = function() removeMark(2); markPositions[2] = Vector3.zero end }) end)
-pcall(function() GeneralTab:AddButton({ Title = "标记点3", Callback = function() setMark(3) end }) end)
-pcall(function() GeneralTab:AddButton({ Title = "清除标记点3", Callback = function() removeMark(3); markPositions[3] = Vector3.zero end }) end)
-pcall(function() toggleRefs.loopTeleport = GeneralTab:AddToggle({ Title = "循环传送", Value = false, Callback = toggleLoopTeleport }) end)
+local MarkSec = GeneralTab:AddSection({ Title = "标记点与循环传送", Opened = true })
+pcall(function() MarkSec:AddButton({ Title = "标记点1", Callback = function() setMark(1) end }) end)
+pcall(function() MarkSec:AddButton({ Title = "清除标记点1", Callback = function() removeMark(1); markPositions[1] = Vector3.zero end }) end)
+pcall(function() MarkSec:AddButton({ Title = "标记点2", Callback = function() setMark(2) end }) end)
+pcall(function() MarkSec:AddButton({ Title = "清除标记点2", Callback = function() removeMark(2); markPositions[2] = Vector3.zero end }) end)
+pcall(function() MarkSec:AddButton({ Title = "标记点3", Callback = function() setMark(3) end }) end)
+pcall(function() MarkSec:AddButton({ Title = "清除标记点3", Callback = function() removeMark(3); markPositions[3] = Vector3.zero end }) end)
+pcall(function() toggleRefs.loopTeleport = MarkSec:AddToggle({ Title = "循环传送", Value = false, Callback = toggleLoopTeleport }) end)
 
 -- 坐标传送
-pcall(function() GeneralTab:AddButton({
+local TeleSec = GeneralTab:AddSection({ Title = "坐标传送", Opened = true })
+pcall(function() TeleSec:AddButton({
     Title = "复制当前坐标", Callback = function()
         local char = LocalPlayer.Character
         if char and char:FindFirstChild("HumanoidRootPart") then
             local pos = char.HumanoidRootPart.Position
             local str = string.format("%d,%d,%d", math.round(pos.X), math.round(pos.Y), math.round(pos.Z))
             if setclipboard then setclipboard(str) else StarterGui:SetCore("SendNotification",{Title="坐标已复制",Text=str,Duration=2}) end
+            pcall(function() WindUI:Notify({Title="复制成功",Content=str,Duration=1.5}) end)
         end
     end
 }) end)
 local inputCoord = "0,0,0"
-pcall(function() GeneralTab:AddInput({ Title = "目标坐标", Default = "0,0,0", Callback = function(t) inputCoord = t end }) end)
-pcall(function() GeneralTab:AddButton({
+pcall(function() TeleSec:AddInput({ Title = "目标坐标", Default = "0,0,0", Callback = function(t) inputCoord = t end }) end)
+pcall(function() TeleSec:AddButton({
     Title = "传送", Callback = function()
         local x,y,z = inputCoord:match("([^,]+),([^,]+),([^,]+)")
         if x and y and z then
             local char = LocalPlayer.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 char.HumanoidRootPart.CFrame = CFrame.new(tonumber(x) or 0, tonumber(y) or 0, tonumber(z) or 0)
+                pcall(function() WindUI:Notify({Title="传送成功",Content=inputCoord,Duration=1}) end)
             end
-        end
+        else pcall(function() WindUI:Notify({Title="格式错误",Content="请使用 X,Y,Z 格式",Duration=2}) end) end
     end
 }) end)
 
@@ -837,12 +844,14 @@ pcall(function() GeneralTab:AddButton({
             if hum then hum.AutoRotate = true; hum.WalkSpeed = 16; hum.JumpPower = 50 end
         end
         speedEnabled = false; jumpEnabled = false
+        pcall(function() WindUI:Notify({ Title = "已关闭", Content = "所有功能已关闭", Duration = 3 }) end)
     end
 }) end)
 
 -- 古怪的球棒标签页
+local WeirdSec = WeirdBatTab:AddSection({ Title = "球棒技能", Opened = true })
 local chainKillEnabled = false local chainKillThread = nil
-pcall(function() toggleRefs.chainKill = WeirdBatTab:AddToggle({
+pcall(function() toggleRefs.chainKill = WeirdSec:AddToggle({
     Title = "秒杀", Value = false,
     Callback = function(s)
         chainKillEnabled = s
@@ -862,7 +871,7 @@ pcall(function() toggleRefs.chainKill = WeirdBatTab:AddToggle({
 }) end)
 
 local shotbatKillEnabled = false local shotbatKillThread = nil
-pcall(function() toggleRefs.shotbatKill = WeirdBatTab:AddToggle({
+pcall(function() toggleRefs.shotbatKill = WeirdSec:AddToggle({
     Title = "射到精尽(射门棒)", Value = false,
     Callback = function(s)
         shotbatKillEnabled = s
@@ -882,7 +891,7 @@ pcall(function() toggleRefs.shotbatKill = WeirdBatTab:AddToggle({
 }) end)
 
 local tripbatKillEnabled = false local tripbatKillThread = nil
-pcall(function() toggleRefs.tripbatKill = WeirdBatTab:AddToggle({
+pcall(function() toggleRefs.tripbatKill = WeirdSec:AddToggle({
     Title = "玉面手雷王(子空间跳跃棒)", Value = false,
     Callback = function(s)
         tripbatKillEnabled = s
@@ -902,7 +911,7 @@ pcall(function() toggleRefs.tripbatKill = WeirdBatTab:AddToggle({
 }) end)
 
 local gubbyEnabled = false local gubbyThread = nil
-pcall(function() toggleRefs.gubby = WeirdBatTab:AddToggle({
+pcall(function() toggleRefs.gubby = WeirdSec:AddToggle({
     Title = "上吧皮卡丘(古比球棒)", Value = false,
     Callback = function(s)
         gubbyEnabled = s
@@ -930,7 +939,7 @@ pcall(function() toggleRefs.gubby = WeirdBatTab:AddToggle({
 }) end)
 
 local poisonKillEnabled = false local poisonKillThread = nil
-pcall(function() toggleRefs.poisonKill = WeirdBatTab:AddToggle({
+pcall(function() toggleRefs.poisonKill = WeirdSec:AddToggle({
     Title = "绝命毒师(毒液棒)", Value = false,
     Callback = function(s)
         poisonKillEnabled = s
@@ -950,7 +959,7 @@ pcall(function() toggleRefs.poisonKill = WeirdBatTab:AddToggle({
 }) end)
 
 local aquaKillEnabled = false local aquaKillThread = nil
-pcall(function() toggleRefs.aquaKill = WeirdBatTab:AddToggle({
+pcall(function() toggleRefs.aquaKill = WeirdSec:AddToggle({
     Title = "推推乐（aqua球棒）", Value = false,
     Callback = function(s)
         aquaKillEnabled = s
@@ -970,7 +979,7 @@ pcall(function() toggleRefs.aquaKill = WeirdBatTab:AddToggle({
 }) end)
 
 local electroKillEnabled = false local electroKillThread = nil
-pcall(function() toggleRefs.electroKill = WeirdBatTab:AddToggle({
+pcall(function() toggleRefs.electroKill = WeirdSec:AddToggle({
     Title = "五雷轰顶(咖喱棒)", Value = false,
     Callback = function(s)
         electroKillEnabled = s
@@ -1017,7 +1026,7 @@ pcall(function() toggleRefs.electroKill = WeirdBatTab:AddToggle({
 }) end)
 
 local antiFallEnabled = false local antiFallThread = nil
-pcall(function() toggleRefs.antiFall = WeirdBatTab:AddToggle({
+pcall(function() toggleRefs.antiFall = WeirdSec:AddToggle({
     Title = "防坠落", Value = false,
     Callback = function(s)
         antiFallEnabled = s
@@ -1037,7 +1046,7 @@ pcall(function() toggleRefs.antiFall = WeirdBatTab:AddToggle({
     end
 }) end)
 
-pcall(function() WeirdBatTab:AddButton({
+pcall(function() WeirdSec:AddButton({
     Title = "无限提升(力量棒)",
     Callback = function()
         task.spawn(function()
@@ -1054,14 +1063,16 @@ pcall(function() WeirdBatTab:AddButton({
 }) end)
 
 -- 合成核弹标签页
-pcall(function() toggleRefs.autoMerge = NukeTab:AddToggle({ Title = "自动合成", Desc = "同等级合成后丢弃，传送到Y=50高空", Value = false, Callback = setAutoMerge }) end)
-pcall(function() toggleRefs.autoShield = NukeTab:AddToggle({ Title = "自动防护罩", Desc = "冷却结束自动开罩", Value = false, Callback = setAutoShield }) end)
-pcall(function() toggleRefs.autoUpgradeAll = NukeTab:AddToggle({ Title = "自动升级（全部）", Desc = "每30秒购买全部升级", Value = false, Callback = setAutoUpgradeAll }) end)
+local NukeSec = NukeTab:AddSection({ Title = "核弹功能", Opened = true })
+pcall(function() toggleRefs.autoMerge = NukeSec:AddToggle({ Title = "自动合成", Desc = "同等级合成后丢弃，传送到Y=50高空", Value = false, Callback = setAutoMerge }) end)
+pcall(function() toggleRefs.autoShield = NukeSec:AddToggle({ Title = "自动防护罩", Desc = "冷却结束自动开罩", Value = false, Callback = setAutoShield }) end)
+pcall(function() toggleRefs.autoUpgradeAll = NukeSec:AddToggle({ Title = "自动升级（全部）", Desc = "每30秒购买全部升级", Value = false, Callback = setAutoUpgradeAll }) end)
 
 -- 沉默的刺客标签页
-pcall(function() toggleRefs.assassin = AssassinTab:AddToggle({ Title = "强制显示模型", Value = false, Callback = setAssassin }) end)
-pcall(function() toggleRefs.autoAttack = AssassinTab:AddToggle({ Title = "自动秒杀全图", Desc = "全图自动挥刀击杀", Value = false, Callback = setAutoAttack }) end)
-pcall(function() toggleRefs.gacha = AssassinTab:AddToggle({ Title = "自动开箱(神圣)", Value = false, Callback = setGacha }) end)
+local AssassinSec = AssassinTab:AddSection({ Title = "刺客功能", Opened = true })
+pcall(function() toggleRefs.assassin = AssassinSec:AddToggle({ Title = "强制显示模型", Value = false, Callback = setAssassin }) end)
+pcall(function() toggleRefs.autoAttack = AssassinSec:AddToggle({ Title = "自动秒杀全图", Desc = "全图自动挥刀击杀", Value = false, Callback = setAutoAttack }) end)
+pcall(function() toggleRefs.gacha = AssassinSec:AddToggle({ Title = "自动开箱(神圣)", Value = false, Callback = setGacha }) end)
 
 -- 关闭回调
 Window:OnClose(function()
@@ -1097,3 +1108,5 @@ LocalPlayer.CharacterAdded:Connect(function(char)
         Camera.CameraSubject = char:FindFirstChildOfClass("Humanoid")
     end
 end)
+
+pcall(function() WindUI:Notify({ Title = "VIP 脚本", Content = "加载成功！所有功能就绪", Duration = 3 }) end)
