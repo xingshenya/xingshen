@@ -1,3 +1,5 @@
+--站在前人肩膀上，企鹅群1075566796
+
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 if not WindUI then return end
 
@@ -23,11 +25,8 @@ local speedValue = 16
 local selectedTarget = nil
 local selectedDisplayName = ""
 local teleportTarget = ""
-local attackConn = nil
 local aimConn = nil
-local skillConn = nil
 local speedConn = nil
-local espConn = nil
 local allPlayers = {}
 local espObjects = {}
 
@@ -49,7 +48,8 @@ local skillRound = 0
 local attackTicks = 0
 local aimTicks = 0
 local aimBound = false
-local aimTakeover = true
+local attachDist = 3
+local leadTime = 0.06
 local supervisorRuns = 0
 local targetDropdown = nil
 
@@ -266,58 +266,53 @@ local function updateESP()
     end
 end
 
-local function startAttackLoop()
-    if attackConn then attackConn:Disconnect() end
-    attackConn = RunService.Heartbeat:Connect(function()
-        if not autoAttack then return end
-        attackTicks = attackTicks + 1
-        pcall(function()
-            local target = currentTarget()
-            if not target then return end
+local RENDER_BIND = "ZuiQiangChangRender"
 
-            local myChar = LocalPlayer.Character
-            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-            if not myRoot then return end
+local function attackStep()
+    pcall(function()
+        local target = currentTarget()
+        if not target then return end
 
-            local pos = getTargetPosition(target, true)
-            if not pos then return end
+        local myChar = LocalPlayer.Character
+        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return end
 
-            local targetChar = target.Character
-            local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
-            local look = Vector3.new(0, 0, -1)
-            if targetRoot and isValidPos(targetRoot.CFrame.Position) then
-                local lv = targetRoot.CFrame.LookVector
-                if lv.Magnitude > 0.1 then look = lv end
+        local targetChar = target.Character
+        local anchor = (targetChar and targetChar:FindFirstChild("HumanoidRootPart")) or getTargetPart(target)
+        if not anchor then return end
+
+        local anchorCF = anchor.CFrame
+        if not isValidPos(anchorCF.Position) then return end
+
+        local vel = anchor.AssemblyLinearVelocity
+        if not isValidPos(vel) then vel = Vector3.zero end
+        if vel.Magnitude > 100 then vel = vel.Unit * 100 end
+
+        local aimPos = anchorCF.Position + vel * leadTime
+        local lookVec = anchorCF.LookVector
+        if lookVec.Magnitude < 0.1 then lookVec = Vector3.new(0, 0, -1) end
+
+        local standPos = aimPos - lookVec * attachDist
+        local standCF = CFrame.lookAt(standPos, aimPos)
+        if isValidPos(standCF.Position) then
+            myRoot.CFrame = standCF
+            myRoot.AssemblyLinearVelocity = vel
+        end
+
+        local cam = getCamera()
+        if cam then
+            local camPos = cam.CFrame.Position
+            if isValidPos(camPos) and (aimPos - camPos).Magnitude > 0.1 then
+                cam.CFrame = CFrame.lookAt(camPos, aimPos)
             end
+        end
 
-            local behindPos = pos - look * 3
-            if (behindPos - pos).Magnitude > 0.05 then
-                local newCF = CFrame.lookAt(behindPos, pos)
-                if isValidPos(newCF.Position) then
-                    myRoot.CFrame = newCF
-                    myRoot.AssemblyLinearVelocity = Vector3.zero
-                end
-            end
-
-            local cam = getCamera()
-            if cam then
-                local camPos = cam.CFrame.Position
-                if isValidPos(camPos) and (pos - camPos).Magnitude > 0.1 then
-                    cam.CFrame = CFrame.lookAt(camPos, pos)
-                end
-            end
-
-            fireLeftClick()
-            fireLeftClick()
-        end)
+        fireLeftClick()
+        fireLeftClick()
     end)
 end
 
-local AIM_BIND_NAME = "ZuiQiangChangAim"
-
 local function aimStep()
-    if not autoAim then return end
-    aimTicks = aimTicks + 1
     pcall(function()
         local target = currentTarget()
         if not target then return end
@@ -327,44 +322,73 @@ local function aimStep()
 
         local cam = getCamera()
         if not cam then return end
-        if aimTakeover and cam.CameraType ~= Enum.CameraType.Scriptable then
-            cam.CameraType = Enum.CameraType.Scriptable
-        end
         local camPos = cam.CFrame.Position
         if not isValidPos(camPos) then return end
         if (pos - camPos).Magnitude < 0.1 then return end
         cam.CFrame = CFrame.lookAt(camPos, pos)
-        aimTicks = aimTicks + 1
     end)
 end
 
-local function startAimLoop()
-    if aimBound then return end
+local function renderStep()
+    if autoAim then
+        aimTicks = aimTicks + 1
+        aimStep()
+    end
+    if autoAttack then
+        attackTicks = attackTicks + 1
+        attackStep()
+    end
+end
+
+local function ensureRenderBind()
+    if aimBound then return true end
     local ok = pcall(function()
-        RunService:BindToRenderStep(AIM_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, aimStep)
+        RunService:BindToRenderStep(RENDER_BIND, Enum.RenderPriority.Camera.Value + 1, renderStep)
     end)
     if ok then
         aimBound = true
+        return true
+    end
+    if aimConn then pcall(function() aimConn:Disconnect() end) end
+    aimConn = RunService.RenderStepped:Connect(renderStep)
+    aimBound = true
+    return true
+end
+
+local function releaseRenderBind()
+    if not aimBound then return end
+    pcall(function() RunService:UnbindFromRenderStep(RENDER_BIND) end)
+    if aimConn then
+        pcall(function() aimConn:Disconnect() end)
+        aimConn = nil
+    end
+    aimBound = false
+end
+
+local function rebindRender()
+    releaseRenderBind()
+    ensureRenderBind()
+end
+
+local function syncRenderBind()
+    if autoAim or autoAttack then
+        ensureRenderBind()
     else
-        if aimConn then aimConn:Disconnect() end
-        aimConn = RunService.RenderStepped:Connect(aimStep)
-        aimBound = true
+        releaseRenderBind()
     end
 end
 
+local function startAttackLoop()
+    ensureRenderBind()
+end
+
+local function startAimLoop()
+    ensureRenderBind()
+end
+
 local function stopAimLoop()
-    if aimBound then
-        pcall(function() RunService:UnbindFromRenderStep(AIM_BIND_NAME) end)
-        if aimConn then
-            pcall(function() aimConn:Disconnect() end)
-            aimConn = nil
-        end
-        aimBound = false
-    end
-    local cam = getCamera()
-    if cam and cam.CameraType == Enum.CameraType.Scriptable then
-        cam.CameraType = Enum.CameraType.Custom
-    end
+    if autoAttack then return end
+    releaseRenderBind()
 end
 
 local function stopSkillLoop()
@@ -413,21 +437,14 @@ local function supervisorPass()
     supervisorRuns = supervisorRuns + 1
     supervisorHeartbeat = os.clock()
 
-    if autoAttack then
-        local stalled = (attackTicks == lastAttackTicks)
-        if (not attackConn) or (not attackConn.Connected) or stalled then
-            startAttackLoop()
+    if autoAttack or autoAim then
+        local stalled = (autoAttack and attackTicks == lastAttackTicks)
+            or (autoAim and aimTicks == lastAimTicks)
+        if (not aimBound) or stalled then
+            rebindRender()
         end
     end
     lastAttackTicks = attackTicks
-
-    if autoAim then
-        local stalled = (aimTicks == lastAimTicks)
-        if (not aimBound) or stalled then
-            stopAimLoop()
-            startAimLoop()
-        end
-    end
     lastAimTicks = aimTicks
 
     if useSkills and (os.clock() - skillHeartbeat) > 1.5 then
@@ -446,11 +463,7 @@ if LocalPlayer.CharacterAdded then
     LocalPlayer.CharacterAdded:Connect(function()
         task.wait(0.5)
         pcall(function()
-            if autoAttack then startAttackLoop() end
-            if autoAim then
-                stopAimLoop()
-                startAimLoop()
-            end
+            if autoAttack or autoAim then rebindRender() end
             if useSkills then startSkillLoop() end
         end)
     end)
@@ -541,8 +554,7 @@ local function stopAllFeatures()
     speedEnabled = false
     playerESP = false
     stopSkillLoop()
-    stopAimLoop()
-    if attackConn then pcall(function() attackConn:Disconnect() end) end
+    releaseRenderBind()
     if speedConn then pcall(function() speedConn:Disconnect() end) end
     clearESP()
 end
@@ -578,14 +590,15 @@ targetDropdown = MainTab:Dropdown({
 
 MainTab:Toggle({
     Title = "自动打人",
-    Desc = "对面移动时可能打不中",
+    Desc = "不准的推荐自调配置",
     Value = false,
     Callback = function(v)
         autoAttack = v
         if v then
             selectedTarget = findPlayerByDisplayName(selectedDisplayName)
-            startAttackLoop()
+            attackTicks = 0
         end
+        syncRenderBind()
     end
 })
 
@@ -597,25 +610,28 @@ MainTab:Toggle({
         if v then
             selectedTarget = findPlayerByDisplayName(selectedDisplayName)
             aimTicks = 0
-            startAimLoop()
-        else
-            stopAimLoop()
         end
+        syncRenderBind()
     end
 })
 
-MainTab:Toggle({
-    Title = "接管相机(自瞄更稳)",
-    Desc = "自调",
-    Value = true,
+MainTab:Slider({
+    Title = "吸附距离",
+    Value = {Min = 1, Max = 8, Default = 3},
+    Step = 0.5,
     Callback = function(v)
-        aimTakeover = v
-        if not v then
-            local cam = getCamera()
-            if cam and cam.CameraType == Enum.CameraType.Scriptable then
-                cam.CameraType = Enum.CameraType.Custom
-            end
-        end
+        attachDist = v
+        if attachDist < 0.5 then attachDist = 0.5 end
+    end
+})
+
+MainTab:Slider({
+    Title = "预判",
+    Value = {Min = 0, Max = 0.3, Default = 0.06},
+    Step = 0.01,
+    Callback = function(v)
+        leadTime = v
+        if leadTime < 0 then leadTime = 0 end
     end
 })
 
@@ -629,7 +645,7 @@ MainTab:Toggle({
 })
 
 MainTab:Toggle({
-    Title = "自动放技能(不建议开)",
+    Title = "自动放技能",
     Value = false,
     Callback = function(v)
         useSkills = v
@@ -773,7 +789,7 @@ task.spawn(function()
 end)
 
 SettingsTab:Button({
-    Title = "紧急重启全部循环",
+    Title = "重循环",
     Callback = function()
         pcall(supervisorPass)
         WindUI:Notify({Title = "总控台", Content = "已循环", Duration = 2})
@@ -796,8 +812,7 @@ SettingsTab:Button({
 })
 
 Window:OnClose(function()
-    if not supervisorPass then return end
-    if autoAim and not aimBound then startAimLoop() end
+    if autoAim or autoAttack then ensureRenderBind() end
     if useSkills and (os.clock() - skillHeartbeat) > 1.5 then startSkillLoop() end
 end)
 
