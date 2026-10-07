@@ -49,7 +49,6 @@ local attackTicks = 0
 local aimTicks = 0
 local aimBound = false
 local attachDist = 3
-local leadTime = 0.06
 local supervisorRuns = 0
 local targetDropdown = nil
 
@@ -284,27 +283,14 @@ local function attackStep()
         local anchorCF = anchor.CFrame
         if not isValidPos(anchorCF.Position) then return end
 
-        local vel = anchor.AssemblyLinearVelocity
-        if not isValidPos(vel) then vel = Vector3.zero end
-        if vel.Magnitude > 100 then vel = vel.Unit * 100 end
-
-        local aimPos = anchorCF.Position + vel * leadTime
         local lookVec = anchorCF.LookVector
         if lookVec.Magnitude < 0.1 then lookVec = Vector3.new(0, 0, -1) end
 
-        local standPos = aimPos - lookVec * attachDist
-        local standCF = CFrame.lookAt(standPos, aimPos)
+        local standPos = anchorCF.Position - lookVec * attachDist
+        local standCF = CFrame.lookAt(standPos, anchorCF.Position)
         if isValidPos(standCF.Position) then
             myRoot.CFrame = standCF
-            myRoot.AssemblyLinearVelocity = vel
-        end
-
-        local cam = getCamera()
-        if cam then
-            local camPos = cam.CFrame.Position
-            if isValidPos(camPos) and (aimPos - camPos).Magnitude > 0.1 then
-                cam.CFrame = CFrame.lookAt(camPos, aimPos)
-            end
+            myRoot.AssemblyLinearVelocity = Vector3.zero
         end
 
         fireLeftClick()
@@ -622,16 +608,6 @@ MainTab:Slider({
     Callback = function(v)
         attachDist = v
         if attachDist < 0.5 then attachDist = 0.5 end
-    end
-})
-
-MainTab:Slider({
-    Title = "预判",
-    Value = {Min = 0, Max = 0.3, Default = 0.06},
-    Step = 0.01,
-    Callback = function(v)
-        leadTime = v
-        if leadTime < 0 then leadTime = 0 end
     end
 })
 
