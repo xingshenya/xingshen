@@ -1,6 +1,3 @@
---企鹅群1075566796
---站在前人肩膀上
-
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 if not WindUI then return end
 
@@ -19,7 +16,7 @@ local LocalPlayer = Players.LocalPlayer
 local autoAttack = false
 local useSkills = false
 local autoAim = false
-local autoSwitch = true          
+local autoSwitch = true
 local playerESP = false
 local speedEnabled = false
 local speedValue = 16
@@ -35,12 +32,26 @@ local allPlayers = {}
 local espObjects = {}
 
 local skillThread = nil
-local skillToken = 0            
-local lastAimPoint = nil         
+local skillToken = 0
+local lastAimPoint = nil
 local lastAimTime = 0
-local suppressUntil = 0          
+local suppressUntil = 0
 local fps = 0
-local targetDropdown = nil       
+
+local skillDefs = {
+    {Key = Enum.KeyCode.One,   Name = "技能1", Interval = 2,  Default = 2,  Enabled = true, NextAt = 0, Count = 0},
+    {Key = Enum.KeyCode.Two,   Name = "技能2", Interval = 3,  Default = 3,  Enabled = true, NextAt = 0, Count = 0},
+    {Key = Enum.KeyCode.Three, Name = "技能3", Interval = 5,  Default = 5,  Enabled = true, NextAt = 0, Count = 0},
+    {Key = Enum.KeyCode.Four,  Name = "大招4", Interval = 12, Default = 12, Enabled = true, NextAt = 0, Count = 0},
+}
+local skillHeartbeat = 0
+local skillRound = 0
+local attackTicks = 0
+local aimTicks = 0
+local aimBound = false
+local aimTakeover = true
+local supervisorRuns = 0
+local targetDropdown = nil
 
 local function refreshPlayers()
     allPlayers = {}
@@ -180,7 +191,12 @@ local function fireLeftClick()
 end
 
 local function pressKey(keyCode)
-    pcall(function()
+    if typeof(keypress) == "function" then
+        if pcall(function() keypress(keyCode) end) then
+            return true
+        end
+    end
+    return pcall(function()
         local vim = game:GetService("VirtualInputManager")
         vim:SendKeyEvent(true, keyCode, false, game)
         task.wait(0.05)
@@ -212,7 +228,7 @@ local function updateESP()
         local entry = espObjects[plr]
         local char = plr.Character
         local head = char and char:FindFirstChild("Head")
-        
+
         local valid = entry and entry.Highlight and entry.Highlight.Parent == char
 
         if plr == LocalPlayer or not char or not head or not valid then
@@ -254,6 +270,7 @@ local function startAttackLoop()
     if attackConn then attackConn:Disconnect() end
     attackConn = RunService.Heartbeat:Connect(function()
         if not autoAttack then return end
+        attackTicks = attackTicks + 1
         pcall(function()
             local target = currentTarget()
             if not target then return end
@@ -296,25 +313,58 @@ local function startAttackLoop()
     end)
 end
 
-local function startAimLoop()
-    if aimConn then aimConn:Disconnect() end
-    aimConn = RunService.RenderStepped:Connect(function()
-        if not autoAim then return end
-        pcall(function()
-            local target = currentTarget()
-            if not target then return end
+local AIM_BIND_NAME = "ZuiQiangChangAim"
 
-            local pos = getTargetPosition(target, true)
-            if not pos then return end
+local function aimStep()
+    if not autoAim then return end
+    aimTicks = aimTicks + 1
+    pcall(function()
+        local target = currentTarget()
+        if not target then return end
 
-            local cam = getCamera()
-            if not cam then return end
-            local camPos = cam.CFrame.Position
-            if not isValidPos(camPos) then return end
-            if (pos - camPos).Magnitude < 0.1 then return end
-            cam.CFrame = CFrame.lookAt(camPos, pos)
-        end)
+        local pos = getTargetPosition(target, true)
+        if not pos then return end
+
+        local cam = getCamera()
+        if not cam then return end
+        if aimTakeover and cam.CameraType ~= Enum.CameraType.Scriptable then
+            cam.CameraType = Enum.CameraType.Scriptable
+        end
+        local camPos = cam.CFrame.Position
+        if not isValidPos(camPos) then return end
+        if (pos - camPos).Magnitude < 0.1 then return end
+        cam.CFrame = CFrame.lookAt(camPos, pos)
+        aimTicks = aimTicks + 1
     end)
+end
+
+local function startAimLoop()
+    if aimBound then return end
+    local ok = pcall(function()
+        RunService:BindToRenderStep(AIM_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, aimStep)
+    end)
+    if ok then
+        aimBound = true
+    else
+        if aimConn then aimConn:Disconnect() end
+        aimConn = RunService.RenderStepped:Connect(aimStep)
+        aimBound = true
+    end
+end
+
+local function stopAimLoop()
+    if aimBound then
+        pcall(function() RunService:UnbindFromRenderStep(AIM_BIND_NAME) end)
+        if aimConn then
+            pcall(function() aimConn:Disconnect() end)
+            aimConn = nil
+        end
+        aimBound = false
+    end
+    local cam = getCamera()
+    if cam and cam.CameraType == Enum.CameraType.Scriptable then
+        cam.CameraType = Enum.CameraType.Custom
+    end
 end
 
 local function stopSkillLoop()
@@ -322,24 +372,87 @@ local function stopSkillLoop()
     skillThread = nil
 end
 
+local function resetSkillTimers()
+    local t = os.clock()
+    for i, d in ipairs(skillDefs) do
+        d.NextAt = t + (i - 1) * 0.5
+        d.Count = 0
+    end
+    skillRound = 0
+end
+
 local function startSkillLoop()
     stopSkillLoop()
     local myToken = skillToken
+    resetSkillTimers()
+    skillHeartbeat = os.clock()
     skillThread = task.spawn(function()
         while useSkills and skillToken == myToken do
-            pressKey(Enum.KeyCode.One)
-            if not useSkills or skillToken ~= myToken then break end
-            task.wait(0.5)
-            pressKey(Enum.KeyCode.Two)
-            if not useSkills or skillToken ~= myToken then break end
-            task.wait(0.5)
-            pressKey(Enum.KeyCode.Three)
-            if not useSkills or skillToken ~= myToken then break end
-            task.wait(0.5)
-            pressKey(Enum.KeyCode.Four)
-            if not useSkills or skillToken ~= myToken then break end
-            task.wait(9)
+            skillHeartbeat = os.clock()
+            pcall(function()
+                local now = os.clock()
+                for _, d in ipairs(skillDefs) do
+                    if useSkills and skillToken == myToken and d.Enabled and now >= d.NextAt then
+                        d.NextAt = now + d.Interval
+                        d.Count = d.Count + 1
+                        pressKey(d.Key)
+                    end
+                end
+            end)
+            skillRound = skillRound + 1
+            task.wait(0.1)
         end
+    end)
+end
+
+local supervisorHeartbeat = 0
+local lastAttackTicks = 0
+local lastAimTicks = 0
+
+local function supervisorPass()
+    supervisorRuns = supervisorRuns + 1
+    supervisorHeartbeat = os.clock()
+
+    if autoAttack then
+        local stalled = (attackTicks == lastAttackTicks)
+        if (not attackConn) or (not attackConn.Connected) or stalled then
+            startAttackLoop()
+        end
+    end
+    lastAttackTicks = attackTicks
+
+    if autoAim then
+        local stalled = (aimTicks == lastAimTicks)
+        if (not aimBound) or stalled then
+            stopAimLoop()
+            startAimLoop()
+        end
+    end
+    lastAimTicks = aimTicks
+
+    if useSkills and (os.clock() - skillHeartbeat) > 1.5 then
+        startSkillLoop()
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        pcall(supervisorPass)
+    end
+end)
+
+if LocalPlayer.CharacterAdded then
+    LocalPlayer.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        pcall(function()
+            if autoAttack then startAttackLoop() end
+            if autoAim then
+                stopAimLoop()
+                startAimLoop()
+            end
+            if useSkills then startSkillLoop() end
+        end)
     end)
 end
 
@@ -366,7 +479,7 @@ local function pickupTrashCan()
     local myPos = myRoot.Position
     local nearest = nil
     local nearestDist = math.huge
-    
+
     for _, obj in pairs(workspace:GetDescendants()) do
         local name = obj.Name:lower()
         if name:find("trash can") or name:find("trashcan") then
@@ -380,12 +493,12 @@ local function pickupTrashCan()
             end
         end
     end
-    
+
     if not nearest then
         WindUI:Notify({Title = "未找到", Content = "附近没有垃圾桶", Duration = 2})
         return
     end
-    
+
     myRoot.CFrame = CFrame.new(nearest.Position + Vector3.new(0, 2, 0))
     task.wait(0.4)
     for i = 1, 3 do
@@ -420,6 +533,19 @@ refreshPlayers()
 selectedDisplayName = allPlayers[1] or "无其他玩家"
 teleportTarget = allPlayers[1] or "无其他玩家"
 selectedTarget = findPlayerByDisplayName(selectedDisplayName)
+
+local function stopAllFeatures()
+    autoAttack = false
+    autoAim = false
+    useSkills = false
+    speedEnabled = false
+    playerESP = false
+    stopSkillLoop()
+    stopAimLoop()
+    if attackConn then pcall(function() attackConn:Disconnect() end) end
+    if speedConn then pcall(function() speedConn:Disconnect() end) end
+    clearESP()
+end
 
 local Window = WindUI:CreateWindow({
     Title = "最强战场",
@@ -470,7 +596,25 @@ MainTab:Toggle({
         autoAim = v
         if v then
             selectedTarget = findPlayerByDisplayName(selectedDisplayName)
+            aimTicks = 0
             startAimLoop()
+        else
+            stopAimLoop()
+        end
+    end
+})
+
+MainTab:Toggle({
+    Title = "接管相机(自瞄更稳)",
+    Desc = "自调",
+    Value = true,
+    Callback = function(v)
+        aimTakeover = v
+        if not v then
+            local cam = getCamera()
+            if cam and cam.CameraType == Enum.CameraType.Scriptable then
+                cam.CameraType = Enum.CameraType.Custom
+            end
         end
     end
 })
@@ -501,6 +645,40 @@ MainTab:Button({
     Title = "拾取垃圾桶(可能bug)",
     Callback = function()
         pickupTrashCan()
+    end
+})
+
+local SkillTab = Window:Tab({Title = "技能设置", Icon = "solar:bolt-bold"})
+
+SkillTab:Paragraph({
+    Title = "技能cd",
+    Desc = "自调"
+})
+
+for _, d in ipairs(skillDefs) do
+    SkillTab:Toggle({
+        Title = d.Name .. " 启用",
+        Value = true,
+        Callback = function(v)
+            d.Enabled = v
+        end
+    })
+    SkillTab:Slider({
+        Title = d.Name .. " s（秒）",
+        Value = {Min = 0.5, Max = 60, Default = d.Default},
+        Step = 0.5,
+        Callback = function(v)
+            d.Interval = v
+            if d.Interval < 0.5 then d.Interval = 0.5 end
+        end
+    })
+end
+
+SkillTab:Button({
+    Title = "立即重置技能计时",
+    Callback = function()
+        resetSkillTimers()
+        WindUI:Notify({Title = "技能cd", Content = "计时已重置,", Duration = 2})
     end
 })
 
@@ -561,7 +739,7 @@ end)
 task.spawn(function()
     while true do
         refreshPlayers()
-        
+
         suppressUntil = os.clock() + 0.25
         pcall(function()
             targetDropdown:SetValues(allPlayers)
@@ -581,6 +759,9 @@ task.spawn(function()
         status = status .. "自动打人: " .. (autoAttack and "yes" or "no") .. "\n"
         status = status .. "自瞄玩家: " .. (autoAim and "yes" or "no") .. "\n"
         status = status .. "自动放技能: " .. (useSkills and "yes" or "no") .. "\n"
+        status = status .. "技能cd: " .. (useSkills and ((os.clock() - skillHeartbeat) < 2 and "运行中" or "自愈中") or "关闭") .. "\n"
+        status = status .. "技能计数: " .. table.concat({skillDefs[1].Count, skillDefs[2].Count, skillDefs[3].Count, skillDefs[4].Count}, "/") .. "\n"
+        status = status .. "循环活性 瞄/打/控: " .. aimTicks .. " / " .. attackTicks .. " / " .. supervisorRuns .. "\n"
         status = status .. "调整移速: " .. (speedEnabled and "yes" or "no") .. "\n"
         status = status .. "透视玩家: " .. (playerESP and "yes" or "no") .. "\n"
         status = status .. "击倒换目标: " .. (autoSwitch and "yes" or "no") .. "\n"
@@ -592,6 +773,22 @@ task.spawn(function()
 end)
 
 SettingsTab:Button({
+    Title = "紧急重启全部循环",
+    Callback = function()
+        pcall(supervisorPass)
+        WindUI:Notify({Title = "总控台", Content = "已循环", Duration = 2})
+    end
+})
+
+SettingsTab:Button({
+    Title = "停止全部功能并关闭",
+    Callback = function()
+        stopAllFeatures()
+        Window:Close()
+    end
+})
+
+SettingsTab:Button({
     Title = "关闭面板",
     Callback = function()
         Window:Close()
@@ -599,17 +796,9 @@ SettingsTab:Button({
 })
 
 Window:OnClose(function()
-    autoAttack = false
-    autoAim = false
-    speedEnabled = false
-    playerESP = false
-    stopSkillLoop()
-    useSkills = false
-    clearESP()
-    if attackConn then attackConn:Disconnect() end
-    if aimConn then aimConn:Disconnect() end
-    if speedConn then speedConn:Disconnect() end
-    if fpsConn then fpsConn:Disconnect() end
+    if not supervisorPass then return end
+    if autoAim and not aimBound then startAimLoop() end
+    if useSkills and (os.clock() - skillHeartbeat) > 1.5 then startSkillLoop() end
 end)
 
 WindUI:Notify({
