@@ -38,13 +38,17 @@ local suppressUntil = 0
 local fps = 0
 
 local skillDefs = {
-    {Key = Enum.KeyCode.One,   Name = "技能1", Interval = 2,  Default = 2,  Enabled = true, NextAt = 0, Count = 0},
-    {Key = Enum.KeyCode.Two,   Name = "技能2", Interval = 3,  Default = 3,  Enabled = true, NextAt = 0, Count = 0},
-    {Key = Enum.KeyCode.Three, Name = "技能3", Interval = 5,  Default = 5,  Enabled = true, NextAt = 0, Count = 0},
-    {Key = Enum.KeyCode.Four,  Name = "大招4", Interval = 12, Default = 12, Enabled = true, NextAt = 0, Count = 0},
+    {Key = Enum.KeyCode.One,   Name = "技能1", Enabled = true, Count = 0},
+    {Key = Enum.KeyCode.Two,   Name = "技能2", Enabled = true, Count = 0},
+    {Key = Enum.KeyCode.Three, Name = "技能3", Enabled = true, Count = 0},
+    {Key = Enum.KeyCode.Four,  Name = "大招4", Enabled = true, Count = 0},
 }
 local skillHeartbeat = 0
 local skillRound = 0
+local skillCycleLength = 1.0
+local skillStagger = 0.2
+local skillAnchor = 0
+local skillStep = 0
 local attackTicks = 0
 local aimTicks = 0
 local aimBound = false
@@ -190,17 +194,17 @@ local function fireLeftClick()
 end
 
 local function pressKey(keyCode)
-    if typeof(keypress) == "function" then
-        if pcall(function() keypress(keyCode) end) then
-            return true
-        end
-    end
-    return pcall(function()
+    local ok = pcall(function()
         local vim = game:GetService("VirtualInputManager")
         vim:SendKeyEvent(true, keyCode, false, game)
-        task.wait(0.05)
+        task.wait(0.03)
         vim:SendKeyEvent(false, keyCode, false, game)
     end)
+    if ok then return true end
+    if typeof(keypress) == "function" then
+        return pcall(function() keypress(keyCode) end)
+    end
+    return false
 end
 
 local function clearESP()
@@ -383,9 +387,9 @@ local function stopSkillLoop()
 end
 
 local function resetSkillTimers()
-    local t = os.clock()
-    for i, d in ipairs(skillDefs) do
-        d.NextAt = t + (i - 1) * 0.5
+    skillAnchor = os.clock()
+    skillStep = 0
+    for _, d in ipairs(skillDefs) do
         d.Count = 0
     end
     skillRound = 0
@@ -396,21 +400,28 @@ local function startSkillLoop()
     local myToken = skillToken
     resetSkillTimers()
     skillHeartbeat = os.clock()
+    local n = #skillDefs
     skillThread = task.spawn(function()
         while useSkills and skillToken == myToken do
             skillHeartbeat = os.clock()
             pcall(function()
-                local now = os.clock()
-                for _, d in ipairs(skillDefs) do
-                    if useSkills and skillToken == myToken and d.Enabled and now >= d.NextAt then
-                        d.NextAt = now + d.Interval
+                for _ = 1, n do
+                    if not (useSkills and skillToken == myToken) then break end
+                    local k = skillStep
+                    local d = skillDefs[(k % n) + 1]
+                    local due = skillAnchor
+                        + (k % n) * skillStagger
+                        + math.floor(k / n) * skillCycleLength
+                    if os.clock() < due then break end
+                    skillStep = k + 1
+                    if d.Enabled then
                         d.Count = d.Count + 1
                         pressKey(d.Key)
                     end
                 end
             end)
             skillRound = skillRound + 1
-            task.wait(0.1)
+            task.wait(0.02)
         end
     end)
 end
@@ -643,8 +654,30 @@ MainTab:Button({
 local SkillTab = Window:Tab({Title = "技能设置", Icon = "solar:bolt-bold"})
 
 SkillTab:Paragraph({
-    Title = "技能cd",
-    Desc = "自调"
+    Title = "技能循环",
+    Desc = ""
+})
+
+SkillTab:Slider({
+    Title = "循环周期 s（秒）",
+    Value = {Min = 0.4, Max = 3, Default = 1},
+    Step = 0.1,
+    Callback = function(v)
+        skillCycleLength = v
+        if skillCycleLength < 0.4 then skillCycleLength = 0.4 end
+        resetSkillTimers()
+    end
+})
+
+SkillTab:Slider({
+    Title = "相邻间隔 s（秒）",
+    Value = {Min = 0.05, Max = 0.5, Default = 0.2},
+    Step = 0.05,
+    Callback = function(v)
+        skillStagger = v
+        if skillStagger < 0.05 then skillStagger = 0.05 end
+        resetSkillTimers()
+    end
 })
 
 for _, d in ipairs(skillDefs) do
@@ -653,15 +686,6 @@ for _, d in ipairs(skillDefs) do
         Value = true,
         Callback = function(v)
             d.Enabled = v
-        end
-    })
-    SkillTab:Slider({
-        Title = d.Name .. " s（秒）",
-        Value = {Min = 0.5, Max = 60, Default = d.Default},
-        Step = 0.5,
-        Callback = function(v)
-            d.Interval = v
-            if d.Interval < 0.5 then d.Interval = 0.5 end
         end
     })
 end
@@ -753,7 +777,7 @@ task.spawn(function()
         status = status .. "自动放技能: " .. (useSkills and "yes" or "no") .. "\n"
         status = status .. "技能cd: " .. (useSkills and ((os.clock() - skillHeartbeat) < 2 and "运行中" or "自愈中") or "关闭") .. "\n"
         status = status .. "技能计数: " .. table.concat({skillDefs[1].Count, skillDefs[2].Count, skillDefs[3].Count, skillDefs[4].Count}, "/") .. "\n"
-        status = status .. "循环活性 瞄/打/控: " .. aimTicks .. " / " .. attackTicks .. " / " .. supervisorRuns .. "\n"
+        status = status .. "循环: " .. aimTicks .. " / " .. attackTicks .. " / " .. supervisorRuns .. "\n"
         status = status .. "调整移速: " .. (speedEnabled and "yes" or "no") .. "\n"
         status = status .. "透视玩家: " .. (playerESP and "yes" or "no") .. "\n"
         status = status .. "击倒换目标: " .. (autoSwitch and "yes" or "no") .. "\n"
