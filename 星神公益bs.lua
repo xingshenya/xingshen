@@ -2865,10 +2865,328 @@ local function layout(page)
 		return L
 	end
 
+	L.label = function(text)
+		ui.createLabel({ parent = host, text = text, x = 8, y = y, w = 300, h = 14,
+			textSize = 10, color = ui.Theme.TEXT_MUTED })
+		y = y + 18
+		return L
+	end
+
 	L.gap = function(h) y = y + (h or 8); return L end
+	L.y = function() return y end
+	L.add = function(h) y = y + (h or 0); return L end
+	L.host = host
 	return L
 end
 
+-- ===== 自绘版弹窗依赖（照抄自绘原版） =====
+local T = {
+    bg      = Color3.fromRGB(16, 17, 21),
+    panel   = Color3.fromRGB(24, 26, 32),
+    card    = Color3.fromRGB(32, 35, 42),
+    cardHi  = Color3.fromRGB(42, 46, 56),
+    line    = Color3.fromRGB(50, 54, 64),
+    text    = Color3.fromRGB(232, 234, 240),
+    sub     = Color3.fromRGB(132, 138, 152),
+    accent  = Color3.fromRGB(52, 199, 123),
+    accent2 = Color3.fromRGB(66, 133, 244),
+    danger  = Color3.fromRGB(232, 78, 78),
+    off     = Color3.fromRGB(64, 68, 80),
+    purple  = Color3.fromRGB(180, 90, 240),
+    gold    = Color3.fromRGB(255, 200, 60),
+}
+
+local function corner(p, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 8)
+    c.Parent = p
+    return c
+end
+
+local function stroke(p, col, th)
+    local st = Instance.new("UIStroke")
+    st.Color = col or T.line
+    st.Thickness = th or 1
+    st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    st.Parent = p
+    return st
+end
+
+-- 弹窗挂在 LUMEN 的 ScreenGui 上，保证在最上层
+local POPUP_GUI = ui.ScreenGui
+
+local function popupPickGun(onPick)
+    local cats = ROOT.getGunsByCategory()
+
+    local bg = Instance.new("TextButton")
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundColor3 = Color3.new(0, 0, 0)
+    bg.BackgroundTransparency = 0.5
+    bg.Text = ""
+    bg.AutoButtonColor = false
+    bg.ZIndex = 400
+    bg.Parent = POPUP_GUI
+
+    local camObj = workspace.CurrentCamera
+    local vp = camObj and camObj.ViewportSize or Vector2.new(1280, 720)
+    local h = math.floor(vp.Y * 0.78)
+
+    local popup = Instance.new("Frame")
+    popup.Size = UDim2.new(0, 320, 0, h)
+    popup.Position = UDim2.new(0.5, -160, 0.5, -h / 2)
+    popup.BackgroundColor3 = T.panel
+    popup.BorderSizePixel = 0
+    popup.ZIndex = 500
+    popup.Parent = POPUP_GUI
+    corner(popup, 12)
+    stroke(popup, T.accent, 1)
+
+    local ttl = Instance.new("TextLabel")
+    ttl.Size = UDim2.new(1, -100, 0, 34)
+    ttl.Position = UDim2.new(0, 10, 0, 4)
+    ttl.BackgroundTransparency = 1
+    ttl.Text = "选择武器"
+    ttl.TextColor3 = T.gold
+    ttl.TextXAlignment = Enum.TextXAlignment.Left
+    ttl.Font = Enum.Font.GothamBold
+    ttl.TextSize = 13
+    ttl.ZIndex = 501
+    ttl.Parent = popup
+
+    local backBtn = Instance.new("TextButton")
+    backBtn.Size = UDim2.new(0, 60, 0, 28)
+    backBtn.Position = UDim2.new(1, -70, 0, 7)
+    backBtn.BackgroundColor3 = T.cardHi
+    backBtn.Text = "← 返回"
+    backBtn.TextColor3 = T.text
+    backBtn.Font = Enum.Font.GothamMedium
+    backBtn.TextSize = 10
+    backBtn.AutoButtonColor = false
+    backBtn.BorderSizePixel = 0
+    backBtn.ZIndex = 502
+    backBtn.Visible = false
+    backBtn.Parent = popup
+    corner(backBtn, 6)
+
+    local sf = Instance.new("ScrollingFrame")
+    sf.Size = UDim2.new(1, -8, 1, -44)
+    sf.Position = UDim2.new(0, 4, 0, 40)
+    sf.BackgroundTransparency = 1
+    sf.BorderSizePixel = 0
+    sf.CanvasSize = UDim2.new(0, 0, 0, 0)
+    sf.ScrollingDirection = Enum.ScrollingDirection.Y
+    sf.ScrollBarThickness = 4
+    sf.ScrollBarImageColor3 = T.accent
+    sf.ScrollBarImageTransparency = 0.2
+    sf.ZIndex = 501
+    sf.Parent = popup
+
+    local lay = Instance.new("UIListLayout")
+    lay.Padding = UDim.new(0, 3)
+    lay.Parent = sf
+
+    local function closeAll()
+        pcall(function() bg:Destroy() end)
+        pcall(function() popup:Destroy() end)
+    end
+    bg.MouseButton1Click:Connect(closeAll)
+
+    local function clearList()
+        for _, c in ipairs(sf:GetChildren()) do
+            if c:IsA("TextButton") or c:IsA("TextLabel") or c:IsA("Frame") then
+                c:Destroy()
+            end
+        end
+    end
+
+    local function mkRow(text, color, onClick, isHeader)
+        local rb = Instance.new("TextButton")
+        rb.Size = UDim2.new(1, -4, 0, isHeader and 26 or 32)
+        rb.BackgroundColor3 = isHeader and T.card or T.card
+        rb.Text = text
+        rb.TextColor3 = isHeader and T.gold or color or T.text
+        rb.TextXAlignment = Enum.TextXAlignment.Left
+        rb.Font = isHeader and Enum.Font.GothamBold or Enum.Font.GothamMedium
+        rb.TextSize = isHeader and 11 or 11
+        rb.AutoButtonColor = false
+        rb.BorderSizePixel = 0
+        rb.ZIndex = 502
+        rb.Parent = sf
+        corner(rb, 6)
+        local pad = Instance.new("UIPadding")
+        pad.PaddingLeft = UDim.new(0, 10)
+        pad.Parent = rb
+        if onClick then
+            rb.MouseButton1Click:Connect(onClick)
+        else
+            rb.AutoButtonColor = false
+        end
+        return rb
+    end
+
+    local showItems
+
+    local function showCats()
+        clearList()
+        ttl.Text = "选择武器 · 分类"
+        backBtn.Visible = false
+        local y = 0
+        for _, c in ipairs(cats) do
+            local label = c.label .. "  (" .. #c.items .. ")"
+            mkRow(label, T.accent2, function()
+                showItems(c)
+            end)
+            y = y + 35
+        end
+        sf.CanvasSize = UDim2.new(0, 0, 0, y + 10)
+    end
+
+    showItems = function(c)
+        clearList()
+        ttl.Text = c.label
+        backBtn.Visible = true
+        local y = 0
+        for _, name in ipairs(c.items) do
+            local hasCfg = CFG.SkinMap[name] ~= nil
+            local prefix = hasCfg and "● " or "  "
+            local col = hasCfg and T.accent or T.text
+            mkRow(prefix .. name, col, function()
+                closeAll()
+                onPick(name)
+            end)
+            y = y + 35
+        end
+        sf.CanvasSize = UDim2.new(0, 0, 0, y + 10)
+        sf.CanvasPosition = Vector2.new(0, 0)
+    end
+
+    backBtn.MouseButton1Click:Connect(showCats)
+    showCats()
+
+    local dragStart, dragCanvas
+    sf.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.Touch then
+            dragStart = inp.Position.Y
+            dragCanvas = sf.CanvasPosition.Y
+        end
+    end)
+    sf.InputChanged:Connect(function(inp)
+        if dragStart and inp.UserInputType == Enum.UserInputType.Touch then
+            local dy = dragStart - inp.Position.Y
+            sf.CanvasPosition = Vector2.new(0, math.max(0, dragCanvas + dy))
+        end
+    end)
+    sf.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.Touch then
+            dragStart = nil
+        end
+    end)
+end
+local function popupPick(title, list, onPick)
+    local rowH = 32
+
+    local bg = Instance.new("TextButton")
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundColor3 = Color3.new(0, 0, 0)
+    bg.BackgroundTransparency = 0.5
+    bg.Text = ""
+    bg.AutoButtonColor = false
+    bg.ZIndex = 400
+    bg.Parent = POPUP_GUI
+
+    local camObj = workspace.CurrentCamera
+    local vp = camObj and camObj.ViewportSize or Vector2.new(1280, 720)
+    local h = math.floor(vp.Y * 0.75)
+
+    local popup = Instance.new("Frame")
+    popup.Size = UDim2.new(0, 310, 0, h)
+    popup.Position = UDim2.new(0.5, -155, 0.5, -h / 2)
+    popup.BackgroundColor3 = T.panel
+    popup.BorderSizePixel = 0
+    popup.ZIndex = 500
+    popup.Parent = POPUP_GUI
+    corner(popup, 12)
+    stroke(popup, T.accent, 1)
+
+    local ttl = Instance.new("TextLabel")
+    ttl.Size = UDim2.new(1, -20, 0, 34)
+    ttl.Position = UDim2.new(0, 10, 0, 4)
+    ttl.BackgroundTransparency = 1
+    ttl.Text = title .. "  (" .. #list .. ")"
+    ttl.TextColor3 = T.gold
+    ttl.TextXAlignment = Enum.TextXAlignment.Left
+    ttl.Font = Enum.Font.GothamBold
+    ttl.TextSize = 13
+    ttl.ZIndex = 501
+    ttl.Parent = popup
+
+    local sf = Instance.new("ScrollingFrame")
+    sf.Size = UDim2.new(1, -8, 1, -44)
+    sf.Position = UDim2.new(0, 4, 0, 40)
+    sf.BackgroundTransparency = 1
+    sf.BorderSizePixel = 0
+    sf.CanvasSize = UDim2.new(0, 0, 0, #list * (rowH + 2) + 4)
+    sf.ScrollingDirection = Enum.ScrollingDirection.Y
+    sf.ScrollBarThickness = 4
+    sf.ScrollBarImageColor3 = T.accent
+    sf.ScrollBarImageTransparency = 0.2
+    sf.ZIndex = 501
+    sf.Parent = popup
+
+    local lay2 = Instance.new("UIListLayout")
+    lay2.Padding = UDim.new(0, 2)
+    lay2.Parent = sf
+
+    local function closeAll()
+        pcall(function() bg:Destroy() end)
+        pcall(function() popup:Destroy() end)
+    end
+
+    bg.MouseButton1Click:Connect(closeAll)
+
+    for _, name in ipairs(list) do
+        local rb = Instance.new("TextButton")
+        rb.Size = UDim2.new(1, -4, 0, rowH)
+        rb.BackgroundColor3 = T.card
+        rb.Text = tostring(name)
+        rb.TextColor3 = T.text
+        rb.TextXAlignment = Enum.TextXAlignment.Left
+        rb.Font = Enum.Font.GothamMedium
+        rb.TextSize = 11
+        rb.AutoButtonColor = false
+        rb.BorderSizePixel = 0
+        rb.ZIndex = 502
+        rb.Parent = sf
+        corner(rb, 6)
+        local pad = Instance.new("UIPadding")
+        pad.PaddingLeft = UDim.new(0, 10)
+        pad.Parent = rb
+
+        rb.MouseButton1Click:Connect(function()
+            closeAll()
+            onPick(name)
+        end)
+    end
+
+    local dragStart, dragCanvas
+    sf.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.Touch then
+            dragStart = inp.Position.Y
+            dragCanvas = sf.CanvasPosition.Y
+        end
+    end)
+    sf.InputChanged:Connect(function(inp)
+        if dragStart and (inp.UserInputType == Enum.UserInputType.Touch) then
+            local dy = dragStart - inp.Position.Y
+            sf.CanvasPosition = Vector2.new(0, math.max(0, dragCanvas + dy))
+        end
+    end)
+    sf.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.Touch then
+            dragStart = nil
+        end
+    end)
+end
 local function say(msg)
 	pcall(function()
 		ui.notify({ title = "星神", message = tostring(msg), type = "info" })
@@ -2877,18 +3195,157 @@ end
 
 do
 	local LG = layout(pages[1])
-	LG.title("皮肤")
+	local host = LG.host
+
 	LG.toggle("美化总开关", CFG.SkinOn, function(v)
 		CFG.SkinOn = v
 		if not v then pcall(ROOT.restoreAllSkins) end
 		say("美化总开关: " .. (v and "开" or "关"))
 	end, "关闭恢复默认")
+
 	LG.toggle("手套美化", CFG.GloveOn, function(v)
 		CFG.GloveOn = v
 		if not v then pcall(ROOT.applyAllSkins) end
 		say("手套美化: " .. (v and "开" or "关"))
 	end, "当前 " .. tostring(CFG.GloveName))
-	LG.gap(4)
+
+	LG.gap(6)
+	LG.title("选枪 → 指定皮肤")
+
+	local gunList = {}
+	local gunSeen = {}
+	local function addGun(nm)
+		if type(nm) ~= "string" or nm == "" then return end
+		if gunSeen[nm] then return end
+		gunSeen[nm] = true
+		gunList[#gunList + 1] = nm
+	end
+
+	pcall(function()
+		for _, cat in ipairs(ROOT.getGunsByCategory()) do
+			for _, nm in ipairs(cat.items) do addGun(nm) end
+		end
+	end)
+	if #gunList == 0 then
+		pcall(function()
+			for _, nm in ipairs(ROOT.getAllGuns()) do addGun(nm) end
+		end)
+	end
+
+	local stateLbl = ui.createLabel({
+		parent = host, text = CFG.EditGun .. " → 未配置",
+		x = 8, y = LG.y(), w = 300, h = 14,
+		textSize = 10, color = ui.Theme.PRIMARY,
+	})
+	LG.add(16)
+
+	local WEAR_NAME = { "崭新", "略磨", "久经", "破损", "战痕" }
+
+	local function refreshState()
+		local conf = CFG.SkinMap[CFG.EditGun]
+		if conf and conf.skin then
+			stateLbl.Text = CFG.EditGun .. " → " .. tostring(conf.skin)
+				.. " (" .. (WEAR_NAME[conf.wear or 1] or "?") .. ")"
+		else
+			stateLbl.Text = CFG.EditGun .. " → 未配置"
+		end
+	end
+
+	local wearSld = nil
+	local gunDrop = nil
+
+	local function bindWear()
+		if not wearSld then return end
+		local conf = CFG.SkinMap[CFG.EditGun]
+		wearSld.setValue(conf and conf.wear or 1)
+	end
+
+	local skinBtn = nil
+	local updateSkinBtn = function() end
+
+	updateSkinBtn = function()
+		if not skinBtn then return end
+		local conf = CFG.SkinMap[CFG.EditGun]
+		if conf and conf.skin then
+			skinBtn.Text = "皮肤: " .. tostring(conf.skin) .. " ▾"
+		else
+			skinBtn.Text = "选择皮肤 ▾"
+		end
+	end
+
+	LG.label("枪械")
+	local gunBtn = ui.createButton({
+		parent = host, text = "枪械: " .. tostring(CFG.EditGun) .. " ▾",
+		x = 6, y = LG.y(), w = 310, h = 30,
+		onClick = function()
+			popupPickGun(function(name)
+				CFG.EditGun = name
+				gunBtn.Text = "枪械: " .. tostring(name) .. " ▾"
+				bindWear()
+				refreshState()
+				updateSkinBtn()
+			end)
+		end,
+	})
+	LG.add(34)
+
+	LG.label("皮肤")
+	skinBtn = ui.createButton({
+		parent = host, text = "选择皮肤 ▾", x = 6, y = LG.y(), w = 310, h = 30,
+		onClick = function()
+			local list = ROOT.getSkins(CFG.EditGun)
+			if #list == 0 then say(CFG.EditGun .. " 没有可用皮肤") return end
+			local conf = CFG.SkinMap[CFG.EditGun]
+			local cur = conf and conf.skin or ""
+			popupPick(CFG.EditGun .. " 的皮肤", list, function(name)
+				CFG.SkinMap[CFG.EditGun] = CFG.SkinMap[CFG.EditGun] or {}
+				CFG.SkinMap[CFG.EditGun].skin = name
+				CFG.SkinMap[CFG.EditGun].wear = CFG.SkinMap[CFG.EditGun].wear or 1
+				CFG.SkinOn = true
+				countCfg()
+				ROOT.applyAllSkins()
+				refreshState()
+				updateSkinBtn()
+				say(CFG.EditGun .. " → " .. tostring(name))
+			end)
+		end,
+	})
+	LG.add(34)
+
+	wearSld = LG.slider("磨损", 1, 5, 1,
+		(CFG.SkinMap[CFG.EditGun] and CFG.SkinMap[CFG.EditGun].wear) or 1,
+		function(v)
+			local conf = CFG.SkinMap[CFG.EditGun]
+			if conf and conf.skin then
+				conf.wear = v
+				ROOT.applyAllSkins()
+				refreshState()
+			end
+		end)
+
+	ui.createButton({
+		parent = host, text = "应用当前枪皮肤", x = 6, y = LG.y(), w = 310, h = 30,
+		onClick = function()
+			ROOT.applyAllSkins()
+			say("已应用 " .. CFG.EditGun)
+		end,
+	})
+	LG.add(34)
+
+	ui.createButton({
+		parent = host, text = "清除这把枪的皮肤", x = 6, y = LG.y(), w = 310, h = 30,
+		onClick = function()
+			ROOT.clearGunSkin(CFG.EditGun)
+			ROOT.applyAllSkins()
+			refreshState()
+			say(CFG.EditGun .. " 已清除")
+		end,
+	})
+	LG.add(34)
+
+	refreshState()
+
+	LG.gap(6)
 	LG.title("一键")
 	LG.button("全皮美化", function()
 		ROOT.clearCaches()
@@ -2900,12 +3357,14 @@ do
 		CFG.GloveOn = true
 		CFG.SkinOn = true
 		ROOT.applyAllSkins()
+		refreshState()
 		say("美化完成 " .. gunN .. " 把 手套 " .. CFG.GloveName)
 	end)
 	LG.button("清空全部配置", function()
 		CFG.SkinMap = {}
 		ROOT.clearCaches()
 		ROOT.restoreAllSkins()
+		refreshState()
 		say("已清空")
 	end)
 end
